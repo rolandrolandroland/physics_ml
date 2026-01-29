@@ -1,0 +1,1 @@
+"Almost every FDM bug comes from mixing up derivatives, mixing up indices, or mishandling boundaries" 
