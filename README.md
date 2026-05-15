@@ -34,8 +34,9 @@ This file will serve as a high level overview and roadmap, with the specifics of
 described in further detail in separate files.  Let's get to the roadmap. 
 
 ### The Data Factory
-First thing that needs to happen is to generate the data. This is done in the `data_factory.py` script. Note
-that running this script as is will save 1,000 point patterns coming in at around 5 gigabytes onto your device! The easiest
+First thing that needs to happen is to generate the data. This is done in the `data_factory.py` script.  For the intial
+neural field model, we only use one pattern at a time, but the model will be adapted in the future and trained on many 
+point patterns.  Adjust `n_sims` accordingly. Note that running this script as is will save 1,000 point patterns coming in at around 5 gigabytes onto your device! The easiest
 way to reduce this is to reduce the `n_sims` down from 1,000. For more information on this, see the `data_factory.md` file.
 
 ### Clustersim
