@@ -1,4 +1,4 @@
-# Cold contact-resistance inference experiment
+# Cold contact-resistance inference and noise study
 
 ## 1. Purpose
 
@@ -6,7 +6,8 @@ This document is a standalone walkthrough of ThermoTwin's first conventional
 contact-parameter inference experiment. It explains the physical question,
 frozen assumptions, current schedules, synthetic-data generation, regime-level
 data split, loss function, scalar optimizer, validation procedure, numerical
-results, interpretation, and limitations.
+results, interpretation, and limitations. It also documents the first
+100-trial extension with controlled Gaussian temperature noise.
 
 The experiment asks:
 
@@ -20,6 +21,8 @@ hardware.
 
 The implementation is in
 [`contact_resistance_inference.py`](contact_resistance_inference.py). The
+repeated-noise implementation is in
+[`contact_resistance_noise_study.py`](contact_resistance_noise_study.py). The
 learning exercises are in
 [`notes/14_contact_resistance_experiment.md`](notes/14_contact_resistance_experiment.md).
 
@@ -53,6 +56,22 @@ the candidate simulator uses the same equations, numerical step, and fixed
 parameters as the generator. This favorable situation is sometimes called an
 inverse crime. It is useful as a software and identifiability baseline, but it
 is much easier than real parameter inference.
+
+The follow-on study adds independent 0.05 K Gaussian temperature noise and
+repeats the fit for 100 saved trials:
+
+| Quantity | Repeated-noise result |
+| --- | ---: |
+| Mean inferred resistance | 0.249782542 K/W |
+| Sample standard deviation | 0.004116544 K/W |
+| Mean parameter bias | -0.000217458 K/W |
+| Parameter RMSE | 0.004101678 K/W |
+| Empirical 5th--95th percentiles | 0.243722770--0.256246405 K/W |
+| Search-bound hits | 0 |
+
+This second result measures empirical variation under one isolated synthetic
+noise model. It is not a hardware uncertainty interval. Section 19 derives
+the statistics, traces the code, and explains the limits of the conclusion.
 
 ---
 
@@ -427,7 +446,9 @@ freeze current regimes
 
 ---
 
-## 15. Running the experiment
+## 15. Running the experiments
+
+### 15.1 Ideal inference baseline
 
 From the repository root, run:
 
@@ -454,9 +475,33 @@ Run the focused tests with:
 python3 -m unittest tests.test_contact_resistance_inference
 ~~~
 
+### 15.2 Repeated-noise study
+
+Run the frozen 100-trial study with:
+
+~~~bash
+python3 -m thermotwin.contact_resistance_noise_study
+~~~
+
+Use a smaller trial count while exploring:
+
+~~~bash
+python3 -m thermotwin.contact_resistance_noise_study --trials 5
+~~~
+
+The command also accepts `--first-seed` and
+`--noise-standard-deviation`. Changing either produces a different controlled
+study, so report both values whenever results are compared.
+
+Run the focused robustness tests with:
+
+~~~bash
+python3 -m unittest tests.test_contact_resistance_noise_study
+~~~
+
 ---
 
-## 16. What the tests protect
+## 16. What the ideal-inference tests protect
 
 The focused tests verify:
 
@@ -493,6 +538,9 @@ Within the frozen mathematical model:
    reversal when the model is exact.
 6. Hot-side histories provide a useful consistency check even though they do
    not enter the loss.
+7. Under the isolated 0.05 K Gaussian-noise model, the 100-trial estimates
+   remain centered near the hidden truth with a 0.00412 K/W sample standard
+   deviation and no search-bound hits.
 
 ---
 
@@ -503,9 +551,10 @@ This experiment does not establish:
 - the cold contact resistance of physical hardware;
 - the correctness of the four-node lumped model;
 - the accuracy of any fixed thermal parameter;
-- robustness to Gaussian noise, fixed bias, sensor lag, or missing readings;
+- robustness to fixed bias, sensor lag, missing readings, correlated noise, or
+  a noise level other than the one frozen synthetic case;
 - identifiability when multiple parameters vary together;
-- uncertainty bounds on the inferred resistance;
+- formal uncertainty bounds on the inferred resistance;
 - correctness under temperature-dependent material properties;
 - equivalence between contact paste, clamping pressure, geometry, and one
   constant lumped resistance; or
@@ -516,21 +565,214 @@ accuracy.
 
 ---
 
-## 19. Planned progression
+## 19. Repeated Gaussian-noise robustness study
 
-The controlled baseline supports the following staged extensions:
+### 19.1 Question
 
-1. repeat the scalar fit with several search bounds and training schedules;
-2. add Gaussian temperature noise over many saved seeds;
-3. add fixed bias and study systematic parameter error;
-4. add sensor lag and test confusion with thermal capacitance;
-5. add the frozen missing-reading interval;
-6. fit using restricted sensor sets;
-7. compare conventional least squares with an inverse PINN;
-8. infer one contact resistance while perturbing other assumed-known values;
-9. quantify profile likelihood, bootstrap uncertainty, and practical
+The first robustness extension asks:
+
+> If independent zero-mean temperature errors with a 0.05 K standard
+> deviation are added, how much does the inferred cold contact resistance vary
+> across repeated synthetic experiments?
+
+One noisy fit is not enough to answer that question. It can land unusually
+close to or far from the truth by chance. The implementation therefore runs
+100 reproducible trials and summarizes the distribution of fitted parameters.
+
+### 19.2 What is held fixed
+
+This stage changes only the temperature observations. It preserves:
+
+- the 0.25 K/W hidden cold contact resistance;
+- all other physical parameters;
+- the three complete train, validation, and test current regimes;
+- the 0.1 s RK4 step and 1 s observation interval;
+- all four sensor locations;
+- the cold-face and cold-exchanger fitting pair; and
+- the equal-weight least-squares loss.
+
+Bias, lag, missing readings, current error, correlated noise, parameter error,
+and model discrepancy remain disabled. That isolation is essential: if the
+fit changes, this experiment lets us attribute the change to the imposed
+random temperature error rather than to several mechanisms at once.
+
+### 19.3 Frozen trial design and seed mapping
+
+All four temperature sensors receive independent Gaussian errors with mean
+zero and standard deviation 0.05 K. Trial $i$, counted from zero, uses:
+
+$$
+s_{train}=2026+3i,
+$$
+
+$$
+s_{validation}=2027+3i,
+$$
+
+$$
+s_{test}=2028+3i.
+$$
+
+Consequently, no regime or trial reuses a random seed. The seed mapping makes
+the complete study reproducible while preserving distinct noise draws for all
+three regimes.
+
+### 19.4 One-trial data path
+
+Each trial follows this sequence:
+
+~~~text
+ideal four-node RK4 datasets
+        |
+        +--> independent noise on train, validation, and test observations
+        |
+        +--> fit R_contact,c using only the noisy cold training pair
+        |
+        +--> evaluate that same estimate on all three noisy regimes
+        |
+        +--> compare again with hidden ideal temperatures for analysis only
+~~~
+
+The optimizer searches from 0.05 to 1.0 K/W. The noise study uses a 1e-6 K/W
+interval tolerance and at most 64 golden-section iterations. This tolerance is
+far smaller than the parameter variation caused by 0.05 K noise and reduces
+unnecessary repeated simulation. The frozen fits require 32 loss evaluations
+per trial.
+
+### 19.5 Why two temperature RMSEs are reported
+
+Observation RMSE compares a prediction with the noisy readings:
+
+$$
+RMSE_{obs}=\sqrt{\frac{1}{N}\sum_{j=1}^{N}
+\left(T_j^{pred}-T_j^{noisy}\right)^2}.
+$$
+
+This is the error an estimator can calculate from the available dataset.
+
+Truth RMSE compares the same prediction with the hidden ideal temperatures:
+
+$$
+RMSE_{truth}=\sqrt{\frac{1}{N}\sum_{j=1}^{N}
+\left(T_j^{pred}-T_j^{ideal}\right)^2}.
+$$
+
+This second quantity is available only because the experiment is synthetic.
+It measures trajectory error without asking the model to reproduce individual
+random errors. A physical experiment would not reveal exact hidden truth.
+
+### 19.6 Parameter statistics
+
+For estimates $r_1,\ldots,r_n$ and true resistance $r_{true}$, the report uses:
+
+$$
+bias=\frac{1}{n}\sum_{i=1}^{n}(r_i-r_{true}),
+$$
+
+$$
+RMSE_r=\sqrt{\frac{1}{n}\sum_{i=1}^{n}(r_i-r_{true})^2},
+$$
+
+and the sample standard deviation with denominator $n-1$. The empirical 5th
+and 95th percentiles are linearly interpolated through the ordered estimates.
+A bound-hit count checks whether the optimizer is being truncated by its
+allowed interval.
+
+### 19.7 Frozen 100-trial results
+
+Run the study from the repository root:
+
+~~~bash
+python3 -m thermotwin.contact_resistance_noise_study
+~~~
+
+The saved configuration produces:
+
+| Parameter metric | Result |
+| --- | ---: |
+| Trials | 100 |
+| Mean inferred resistance | 0.249782542 K/W |
+| Sample standard deviation | 0.004116544 K/W |
+| Mean parameter bias | -0.000217458 K/W |
+| Parameter RMSE | 0.004101678 K/W |
+| Empirical 5th percentile | 0.243722770 K/W |
+| Empirical 95th percentile | 0.256246405 K/W |
+| Search-bound hits | 0 |
+
+| Mean fitted-pair RMSE | Train | Validation | Test |
+| --- | ---: | ---: | ---: |
+| Against noisy observations | 0.049496 K | 0.050037 K | 0.049789 K |
+| Against hidden ideal truth | 0.003580 K | 0.002800 K | 0.004655 K |
+
+The mean estimate is 0.000217 K/W below the truth, while the trial-to-trial
+standard deviation is 0.004117 K/W. Thus the observed bias is small compared
+with the random spread in this finite study. The standard deviation is about
+1.65 percent of the 0.25 K/W truth. No estimate reaches either search bound.
+
+The observation errors remain close to the imposed 0.05 K scale. The smaller
+truth errors show that the inferred physical trajectory remains much closer to
+the ideal trajectory than to every individual noisy reading. The test truth
+error is larger than the validation truth error because the bipolar test
+schedule has a different sensitivity to a resistance error; this does not
+mean its sensors received more noise.
+
+### 19.8 Reproduction and exploration
+
+A shorter development run is available without changing the frozen default:
+
+~~~bash
+python3 -m thermotwin.contact_resistance_noise_study --trials 5
+~~~
+
+`--first-seed` selects another reproducible set of trials, and
+`--noise-standard-deviation` changes the isolated noise scale. The exact
+zero-noise case is tested as the ideal-data limiting case.
+
+The central objects are:
+
+- `ContactResistanceNoiseStudyConfig`, which freezes the study controls;
+- `ContactResistanceNoiseSeeds`, which records the three seeds in one trial;
+- `run_contact_resistance_noise_trial`, which performs one fit and evaluation;
+- `run_contact_resistance_noise_study`, which repeats and summarizes trials;
+  and
+- `ContactResistanceNoiseStudySummary`, which stores parameter and
+  temperature-error statistics.
+
+The focused tests are in `tests/test_contact_resistance_noise_study.py`. They
+check validation, seed uniqueness, exact reproducibility, schema preservation,
+the zero-noise limit, frozen regression values, statistic calculations, and
+the generated report.
+
+### 19.9 Correct interpretation and limitations
+
+The 5th--95th percentile range is an empirical interval across these 100
+saved synthetic trials. It is not automatically a 90 percent confidence
+interval for hardware, a guarantee of repeated-sample coverage, or a Bayesian
+credible interval. The result assumes that the model and every non-noise
+quantity are exactly correct.
+
+The study has learned that the current one-parameter estimator is not strongly
+destabilized by independent 0.05 K Gaussian temperature errors in the frozen
+same-model problem. It has not learned whether a physical sensor has that
+error distribution, whether its errors are independent, or how inference
+behaves when systematic and physical uncertainties interact.
+
+---
+
+## 20. Planned progression
+
+The next controlled extensions are:
+
+1. add fixed bias and study systematic parameter error;
+2. add sensor lag and test confusion with thermal capacitance;
+3. add the frozen missing-reading interval;
+4. fit using restricted sensor sets;
+5. combine imperfections only after their isolated effects are understood;
+6. compare conventional least squares with an inverse PINN;
+7. infer one contact resistance while perturbing other assumed-known values;
+8. quantify profile likelihood, bootstrap uncertainty, and practical
    identifiability; and
-10. use sensitivity to select the next most informative experiment.
+9. use sensitivity to select the next most informative experiment.
 
-Each extension should preserve the ideal result as a limiting-case regression
-test.
+Each extension should preserve the ideal result and zero-imperfection result
+as limiting-case regression tests.

@@ -24,11 +24,12 @@ foundation of that larger goal. It contains:
 13. Deterministic per-sensor missing-observation intervals.
 14. Whole-regime train, validation, and test experiment datasets.
 15. Conventional least-squares inference of one cold contact resistance.
-16. A forward physics-informed neural network, or PINN.
-17. An RK4-versus-PINN comparison report.
-18. A first inverse PINN that infers the module thermal conductance $K$ from
+16. A 100-trial Gaussian-noise robustness study of that inference.
+17. A forward physics-informed neural network, or PINN.
+18. An RK4-versus-PINN comparison report.
+19. A first inverse PINN that infers the module thermal conductance $K$ from
    sparse synthetic temperature observations.
-19. Unit, sign, energy, sampling, measurement, numerical, PINN, and
+20. Unit, sign, energy, sampling, measurement, numerical, PINN, and
     identifiability tests.
 
 The package does **not** yet represent a hardware-validated digital twin. Its
@@ -65,7 +66,7 @@ standard library. Run all current ThermoTwin tests with:
 python3 -m unittest discover -s tests
 ```
 
-The current suite contains 156 focused tests. Optional learned-model and report
+The current suite contains 169 focused tests. Optional learned-model and report
 tests are skipped
 when their optional dependencies are not installed.
 
@@ -1681,6 +1682,84 @@ ideal one-parameter recovery limit. It does not establish hardware accuracy,
 parameter uncertainty, multi-parameter identifiability, or robustness to
 noise, bias, lag, missing records, and model discrepancy.
 
+### 11.11 Repeated Gaussian-noise robustness study
+
+The implemented follow-on experiment isolates random temperature noise while
+preserving the same hidden physics, current regimes, observation times, and
+one-parameter estimator. Its implementation is in
+[`contact_resistance_noise_study.py`](contact_resistance_noise_study.py).
+
+The frozen study makes these choices:
+
+| Choice | Value |
+| --- | ---: |
+| Trials | 100 |
+| Temperature-noise standard deviation | 0.05 K |
+| First random seed | 2026 |
+| Seeds consumed per trial | 3 |
+| True cold contact resistance | 0.25 K/W |
+| Search interval | 0.05--1.0 K/W |
+| Search tolerance | 1e-6 K/W |
+
+Each trial assigns a different seed to the train, validation, and test regime.
+Trial $i$ uses seeds $2026+3i$, $2027+3i$, and $2028+3i$, respectively. Noise
+is drawn independently for all four temperature sensors, but the estimator
+still fits only the cold-face and cold-exchanger readings. The hot pair is not
+allowed to influence the fitted parameter. Bias, lag, missingness, current
+error, parameter error, and model discrepancy are disabled.
+
+For each trial, the code regenerates the noisy observations, fits the cold
+contact resistance to the noisy training regime, and evaluates the inferred
+value on all three regimes. It records two deliberately different temperature
+errors:
+
+- observation RMSE compares predictions with the noisy readings actually
+  available to the estimator; and
+- truth RMSE compares the same predictions with the hidden ideal temperatures
+  and is used only for synthetic evaluation.
+
+Across trials, parameter bias is the signed mean of $r_i-r_{true}$, sample
+standard deviation measures the spread of the estimates, and parameter RMSE
+combines bias and spread through the root mean squared parameter error. The
+5th and 95th percentiles are obtained by linear interpolation through the
+ordered 100 estimates.
+
+The frozen result is:
+
+| Metric | Result |
+| --- | ---: |
+| Mean inferred resistance | 0.249782542 K/W |
+| Sample standard deviation | 0.004116544 K/W |
+| Mean parameter bias | -0.000217458 K/W |
+| Parameter RMSE | 0.004101678 K/W |
+| Empirical 5th percentile | 0.243722770 K/W |
+| Empirical 95th percentile | 0.256246405 K/W |
+| Search-bound hits | 0 |
+
+The mean fitted-pair observation RMSEs are 0.049496, 0.050037, and
+0.049789 K for train, validation, and test. Their proximity to 0.05 K checks
+that the residual scale is consistent with the imposed measurement noise. The
+corresponding hidden-truth RMSEs are 0.003580, 0.002800, and 0.004655 K. They
+are much smaller because a fitted physical trajectory does not reproduce each
+independent noise draw.
+
+Run all 100 trials with:
+
+~~~bash
+python3 -m thermotwin.contact_resistance_noise_study
+~~~
+
+For a faster exploratory run, pass `--trials 5`. Reusing the frozen seeds
+reproduces the same synthetic study; changing `--first-seed` draws another
+empirical sample.
+
+The mean estimate is close to the hidden truth, the parameter spread is about
+1.65 percent of the true value, and no result reaches a search bound. Those
+facts support robustness to this one isolated synthetic noise model. They do
+not form a calibrated hardware uncertainty statement or a formal confidence
+interval, and they say nothing yet about bias, lag, missing data, correlated
+noise, uncertain physics, or several unknown parameters.
+
 ---
 
 ## 12. What each test category checks
@@ -1920,6 +1999,23 @@ Checks:
 - recovery of the hidden resistance with bounded search history; and
 - low errors on the complete unseen validation and test regimes.
 
+### 12.19 `test_contact_resistance_noise_study.py`
+
+Checks:
+
+- the frozen noise level, trial count, first seed, and search settings;
+- rejection of invalid configurations and seed inputs;
+- unique deterministic train, validation, and test seeds for every trial;
+- zero noise as the exact ideal-dataset limiting case;
+- same-seed reproducibility and changed-seed variation;
+- preservation of regime, sensor, time, location, current, and count fields;
+- recovery of the noise-free parameter limit;
+- a frozen first noisy trial and reproducible five-trial run;
+- direct agreement of reported bias and RMSE with trial values;
+- ordered interpolated percentiles and zero one-trial sample deviation;
+- absence of search-bound hits in the frozen small study; and
+- inclusion of both observation and hidden-truth metrics in the text report.
+
 ---
 
 ## 13. Validation levels and what they mean
@@ -2000,7 +2096,17 @@ recovery, and transfer to two unseen current schedules. They do not validate
 the four-node model against hardware or quantify robustness when other
 parameters and sensor properties are uncertain.
 
-### 13.12 Hardware validation
+### 13.12 Synthetic Gaussian-noise parameter-robustness validation
+
+The repeated-noise tests verify unique seed assignment, exact reproducibility,
+the zero-noise inference limit, parameter summary calculations, and separate
+evaluation against noisy observations and hidden truth. The frozen 100-trial
+run measures empirical robustness when independent 0.05 K Gaussian errors are
+the only imperfection. It does not validate the assumed noise distribution or
+level, provide formal coverage guarantees, or include hardware and model
+mismatch.
+
+### 13.13 Hardware validation
 
 Hardware validation will require measured temperatures, currents, voltages,
 sensor timing and locations, calibration information, contact modeling, and a
@@ -2043,6 +2149,10 @@ The current results depend on these assumptions:
 18. The first contact-resistance inference uses ideal complete observations,
     treats only the cold contact resistance as unknown, fits the cold face and
     exchanger, and keeps entire current regimes in separate data splits.
+19. The first inference-robustness study applies independent 0.05 K Gaussian
+    errors to all four temperature sensors over 100 trials, gives each regime
+    a unique seed, fits only the cold pair, and keeps every other measurement
+    imperfection and source of model mismatch disabled.
 
 ### 14.1 Contact-resistance scope
 
@@ -2063,7 +2173,8 @@ identifies modeled sensor locations, but it does not
 yet represent physical sensor geometry, empirically calibrated noise, bias,
 lag, or missingness, random or value-dependent outages, automated calibration,
 sensor thermal loading, electrical contact resistance, or flowing-fluid
-states. Neither thermal contact resistance has yet been inferred from data.
+states. Neither thermal contact resistance has yet been inferred from hardware
+data.
 
 ---
 
@@ -2092,6 +2203,7 @@ thermotwin/
 ├── measurement_bias.py
 ├── measurement_lag.py
 ├── measurement_missingness.py
+├── contact_resistance_noise_study.py
 ├── CONTACT_RESISTANCE_EXPERIMENT.md
 ├── requirements-pinn.txt
 ├── README.md
@@ -2116,7 +2228,8 @@ tests/
 ├── test_measurement_bias.py
 ├── test_measurement_lag.py
 ├── test_measurement_missingness.py
-└── test_contact_resistance_inference.py
+├── test_contact_resistance_inference.py
+└── test_contact_resistance_noise_study.py
 ```
 
 The core public API is re-exported from `thermotwin/__init__.py`. Executable
@@ -2137,10 +2250,11 @@ The planned learning and implementation sequence is:
    first-order-lag, and deterministic-missingness baselines.
 4. Preserve whole-regime splitting and the conventional one-contact recovery
    baseline.
-5. Add noise, bias, lag, missing records, and restricted sensors one mechanism
-   at a time to the contact-resistance recovery.
+5. Preserve the repeated Gaussian-noise recovery study, then add bias, lag,
+   missing records, and restricted sensors one mechanism at a time.
 6. Compare inverse PINN recovery with conventional least squares.
-7. Quantify uncertainty and practical identifiability across repeated trials.
+7. Extend empirical uncertainty and practical-identifiability studies to
+   combined imperfections and uncertain physical parameters.
 8. Extend the learned model to time-varying current.
 9. Compare continuous and pulsed control strategies.
 10. Rank candidate experiments by sensitivity or predicted information gain.

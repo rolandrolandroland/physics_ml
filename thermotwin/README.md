@@ -287,6 +287,50 @@ The complete standalone walkthrough is
 code, optimization, validation, and interpretation exercises are in
 [notes/14_contact_resistance_experiment.md](notes/14_contact_resistance_experiment.md).
 
+### Repeated Gaussian-noise robustness study
+
+The follow-on
+[contact_resistance_noise_study.py](contact_resistance_noise_study.py) module
+repeats the same fit for 100 independently seeded synthetic trials. Every
+temperature sensor receives independent zero-mean Gaussian noise with a
+0.05 K standard deviation. Only the cold face and cold exchanger enter the
+fit; bias, lag, missingness, current error, and model mismatch remain disabled
+so this stage isolates random temperature noise.
+
+~~~bash
+python3 -m thermotwin.contact_resistance_noise_study
+~~~
+
+Use `--trials 5` for a faster exploratory run. The optional
+`--first-seed` and `--noise-standard-deviation` arguments create another
+reproducible synthetic study without changing the frozen default.
+
+The frozen seeds beginning at 2026 produce:
+
+| Metric | 100-trial result |
+| --- | ---: |
+| Mean inferred resistance | 0.249782542 K/W |
+| Sample standard deviation | 0.004116544 K/W |
+| Mean parameter bias | -0.000217458 K/W |
+| Parameter RMSE | 0.004101678 K/W |
+| Empirical 5th--95th percentiles | 0.243722770--0.256246405 K/W |
+| Search-bound hits | 0 |
+
+The mean fitted-pair error relative to noisy observations remains close to the
+imposed 0.05 K noise scale. Relative to the hidden ideal temperatures, the
+mean errors are 0.003580 K on training, 0.002800 K on validation, and
+0.004655 K on test. These values describe one reproducible same-model Monte
+Carlo study. The percentile range is an empirical distribution across those
+100 trials, not a formal confidence interval or a hardware uncertainty claim.
+
+Run the focused ideal-inference and noise-study tests with:
+
+~~~bash
+python3 -m unittest \
+  tests.test_contact_resistance_inference \
+  tests.test_contact_resistance_noise_study
+~~~
+
 ## First forward PINN
 
 The optional `thermotwin.forward_pinn` module contains a small PyTorch network

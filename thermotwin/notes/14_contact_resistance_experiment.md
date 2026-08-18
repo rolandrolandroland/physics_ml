@@ -7,10 +7,12 @@ Status: `Not started`
 This worksheet develops both the physics and code understanding required for
 ThermoTwin's first conventional contact-parameter inference experiment.
 
-The experiment uses ideal synthetic temperature observations to infer one
-unknown cold thermal contact resistance. Every other physical parameter is
-held fixed. One current-pulse regime is used for fitting, a different pulse is
-used for validation, and a bipolar pulse is held out for testing.
+The experiment first uses ideal synthetic temperature observations to infer
+one unknown cold thermal contact resistance. It then repeats the fit over 100
+independently seeded 0.05 K Gaussian-noise trials. Every other physical
+parameter is held fixed. One current-pulse regime is used for fitting, a
+different pulse is used for validation, and a bipolar pulse is held out for
+testing.
 
 Complete the prediction exercises before reading the result sections of
 `thermotwin/CONTACT_RESISTANCE_EXPERIMENT.md` or running the high-level
@@ -23,7 +25,9 @@ The relevant files are:
 - `thermotwin/controls.py`;
 - `thermotwin/virtual_test_stand.py`;
 - `thermotwin/contact_resistance_inference.py`;
-- `tests/test_contact_resistance_inference.py`; and
+- `thermotwin/contact_resistance_noise_study.py`;
+- `tests/test_contact_resistance_inference.py`;
+- `tests/test_contact_resistance_noise_study.py`; and
 - `thermotwin/CONTACT_RESISTANCE_EXPERIMENT.md`.
 
 ---
@@ -48,6 +52,8 @@ The relevant files are:
 | Measurement imperfections | None |
 | Estimator | Bounded golden-section least squares |
 | Search bounds | 0.05 to 1.0 K/W |
+| Noise robustness extension | 100 trials at 0.05 K standard deviation |
+| First noise seed | 2026; three unique regime seeds per trial |
 
 ---
 
@@ -804,6 +810,160 @@ a physical trial.
 
 ---
 
+## Block 11 — Trace the implemented Gaussian-noise study
+
+### Exercise 51: Predict the parameter distribution from the physics
+
+Before running or reading the frozen results, consider many repetitions of the
+same experiment with independent, zero-mean temperature noise.
+
+1. Should every fitted resistance equal the truth? Why or why not?
+2. Should the mean fitted resistance necessarily equal the truth exactly for
+   a finite number of trials?
+3. Sketch the distribution you expect around 0.25 K/W.
+4. Predict whether fitting both cold temperatures should be more stable than
+   fitting only the contact temperature difference. Consider independent
+   noise in both sensors.
+5. Explain why zero-mean temperature noise does not mathematically guarantee
+   zero parameter bias in a nonlinear inverse problem.
+
+**My prediction:**
+
+### Exercise 52: Reconstruct the seed map
+
+Open `contact_resistance_noise_study.py` and find
+`contact_resistance_noise_seeds`.
+
+1. Write the train, validation, and test seeds for trial indices 0, 1, and 2.
+2. Derive the three formulas for trial index $i$.
+3. Prove that no two regimes among the first 100 trials reuse a seed.
+4. Explain why using the same seed for all three regimes would weaken the
+   independence of the evaluation.
+5. Identify the test that checks reproducibility and non-overlap.
+
+**My seed table and explanation:**
+
+### Exercise 53: Derive and test the zero-noise limit
+
+Set the noise standard deviation to 0 K in your reasoning.
+
+1. What should happen to every observation?
+2. What should happen to observation RMSE versus truth RMSE?
+3. Why might the inferred resistance differ from 0.25 K/W by a tiny amount
+   even though the data are exact?
+4. Find the search tolerance used by the noise study and compare it with the
+   tighter tolerance in the ideal experiment.
+5. Find the two tests that enforce the dataset and inference limiting cases.
+
+**My limiting-case derivation:**
+
+### Exercise 54: Trace one trial through the code
+
+Starting at `run_contact_resistance_noise_trial`, write the exact function path
+for:
+
+~~~text
+ideal split -> noisy split -> training fit -> regime evaluation -> trial record
+~~~
+
+For each step, state:
+
+- the type of the input and output object;
+- whether the object is ideal, noisy, or predicted;
+- which sensors it contains;
+- which sensors enter the fitting loss; and
+- whether it is permitted to expose hidden truth to the estimator.
+
+Then locate the line that prevents validation or test data from entering the
+fit. Is that safeguard implemented in the noise-study module or inherited
+from the original inference module?
+
+**My code trace:**
+
+### Exercise 55: Separate observation error from truth error
+
+For a fitted prediction $T^{pred}$, noisy reading $T^{noisy}$, and hidden ideal
+temperature $T^{ideal}$:
+
+1. Write $RMSE_{obs}$.
+2. Write $RMSE_{truth}$.
+3. Which one could be computed in a physical experiment?
+4. Which one measures error in the modeled physical trajectory in this
+   synthetic experiment?
+5. Why can $RMSE_{truth}$ be much smaller than $RMSE_{obs}$ without data
+   leakage or overfitting?
+6. Find `_single_group_fitted_pair_rmse`. Explain why it is called once with
+   noisy datasets and once with ideal datasets.
+
+**My explanation:**
+
+### Exercise 56: Reproduce the parameter summary by hand
+
+Suppose five trials return resistance estimates $r_1,\ldots,r_5$.
+
+1. Write the formula for mean inferred resistance.
+2. Write the signed mean bias relative to 0.25 K/W.
+3. Write parameter RMSE.
+4. Write the sample standard deviation and explain why its denominator is
+   $n-1$ rather than $n$ in this report.
+5. Explain why RMSE includes both spread and bias.
+6. Trace each formula to
+   `summarize_contact_resistance_noise_trials`.
+7. Read `_percentile` and calculate the interpolation positions for the 5th
+   and 95th percentiles when $n=100$.
+
+**My derivation and code mapping:**
+
+### Exercise 57: Interpret the frozen 100-trial result
+
+Run:
+
+~~~bash
+python3 -m thermotwin.contact_resistance_noise_study
+~~~
+
+Record the output, then answer:
+
+1. How large is the mean bias compared with the sample standard deviation?
+2. What percentage of the 0.25 K/W truth is the sample standard deviation?
+3. Does the empirical 5th--95th percentile interval contain the truth?
+4. What do zero bound hits rule out, and what do they not prove?
+5. Why are the observation RMSEs close to 0.05 K?
+6. Why do validation and bipolar-test truth RMSE differ even though both use
+   the same noise standard deviation?
+7. Is the percentile range a hardware confidence interval? State the exact
+   limitations in your own words.
+
+**My result and interpretation:**
+
+### Exercise 58: Audit and extend the tests
+
+Open `tests/test_contact_resistance_noise_study.py`.
+
+1. Match each test to one of these categories: input validation,
+   reproducibility, limiting case, data-schema preservation, numerical
+   regression, statistical calculation, or reporting.
+2. Explain why the regular test suite uses five trials instead of rerunning
+   the 100-trial study every time.
+3. Add a written proposal for a test of noise scales 0, 0.01, 0.05, and 0.10 K.
+   State the trend you expect in parameter RMSE without demanding exact
+   monotonicity from a small random sample.
+4. Propose a separate experiment for temporally correlated noise. Do not add
+   it to the current independent-noise implementation.
+5. Name one failure that could pass a mean-estimate check but be caught by the
+   seed, schema, truth-RMSE, or bound-hit checks.
+
+**My audit and extension proposal:**
+
+### Checkpoint 11
+
+Ask Codex to review Exercises 51–58. In particular, ask for checks of the
+finite-sample interpretation, the difference between observation and truth
+errors, and any claim that sounds stronger than the synthetic experiment
+supports.
+
+---
+
 ## Interview teach-back
 
 ### 30-second explanation
@@ -816,8 +976,9 @@ Explain why a current pulse helps identify thermal contact resistance.
 
 Explain the complete path from frozen current regimes through RK4 truth,
 ideal observations, whole-experiment splitting, cold-pair least squares,
-golden-section search, and held-out validation. State why the near-zero errors
-do not establish hardware accuracy.
+golden-section search, held-out validation, independent noisy repetitions, and
+empirical parameter statistics. State why neither the near-zero ideal errors
+nor the 100-trial percentile range establishes hardware accuracy.
 
 **My answer:**
 
@@ -833,6 +994,10 @@ do not establish hardware accuracy.
 8. Why can sensor lag be confused with thermal capacitance?
 9. Why can missing switch-time data be especially damaging?
 10. What would make the resistance practically unidentifiable?
+11. Why do zero-mean sensor errors not guarantee zero parameter bias?
+12. Why must observation RMSE and hidden-truth RMSE be interpreted separately?
+13. Why is an empirical percentile range not automatically a confidence
+    interval for hardware?
 
 **My answers:**
 
