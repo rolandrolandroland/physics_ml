@@ -31,8 +31,8 @@ Positive VI means electrical power enters the module; negative VI means electric
 
 > For $I=0$ and $T_h>T_c$, predict the signs of $Q_c$, $Q_h$, $V$,
 > and $VI$. Explain the actual direction of every energy flow.
-> 
- If I is 0 and $T_h > T_c$, then $Q_c$ and $Q_h$ will both be negative. This means that heat will flow from hot to cold, which makes sense because that is how the system works without any external current. 
+
+If I is 0 and $T_h > T_c$, then $Q_c$ and $Q_h$ will both be negative. This means that heat will flow from hot to cold, which makes sense because that is how the system works without any external current. 
 ## Current-reversal prediction
 
 > Predict which terms change sign when current reverses and which do not.

@@ -9,8 +9,7 @@ We use the class ThermoelectricParameters to represent this.
 We also have the functions
 1. `peltier_heat`: returns the Peltier heating effect, = S x I x T, Seebeck coeffiecient times current times temperature
 2. `joule_heating`: returns the Joule heating: $I^2R$, or current squared times resistance 
-3. `conductive_heat_leak`: returns heat that 'leaks' or diffuses from the hot side to the colds side = $K (T_h - T_c)$ or 
-thermal conductivity times the difference in temperatures between the hot side and cold side
+3. `conductive_heat_leak`: returns heat that 'leaks' or diffuses from the hot side to the colds side = $K (T_h - T_c)$ or thermal conductivity times the difference in temperatures between the hot side and cold side
 4. `cold_side_heat`: returns the heat removed from the cold side $Q_c$ which is $Peltier\ heat - \frac{1}{2} Joule\ heating - conductive\ heat\ leak$
 5. `hot_side_heat`: returns heat added to hot side, which is $Peltier\ heat + \frac{1}{2} Joule\ heating - conductive\ heat\ leak$
 6. `voltage`: returns voltage, which is applied voltage plus Seebeck voltage, $Seebeck \ coefficient *(T_h - T_c) + IR$
