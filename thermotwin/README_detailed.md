@@ -17,11 +17,12 @@ foundation of that larger goal. It contains:
 6. Derived heat, voltage, power, COP, contact, and energy histories.
 7. Reproducible 1 A two-node and contact-aware reference experiments.
 8. A contact-resistance sweep and two-topology comparison report.
-9. A forward physics-informed neural network, or PINN.
-10. An RK4-versus-PINN comparison report.
-11. A first inverse PINN that infers the module thermal conductance $K$ from
+9. An ideal virtual test stand with explicit sensors and sampled observations.
+10. A forward physics-informed neural network, or PINN.
+11. An RK4-versus-PINN comparison report.
+12. A first inverse PINN that infers the module thermal conductance $K$ from
    sparse synthetic temperature observations.
-12. Unit, sign, energy, numerical, PINN, and identifiability tests.
+13. Unit, sign, energy, sampling, numerical, PINN, and identifiability tests.
 
 The package does **not** yet represent a hardware-validated digital twin. Its
 learned models are currently validated against the conventional equations that
@@ -57,7 +58,7 @@ standard library. Run all current ThermoTwin tests with:
 python3 -m unittest discover -s tests
 ```
 
-The current suite contains 75 focused tests. Optional learned-model and report
+The current suite contains 88 focused tests. Optional learned-model and report
 tests are skipped
 when their optional dependencies are not installed.
 
@@ -862,6 +863,79 @@ The frozen experiment, diagnostics, energy-closure, COP, topology-comparison,
 and sweep exercises are in
 [notes/11_contact_reference_diagnostics.md](notes/11_contact_reference_diagnostics.md).
 
+### 9.12 Ideal virtual test stand
+
+The conventional solvers expose every stored RK4 state, but experimental
+inference should only receive values that defined sensors measured at defined
+times. The [virtual_test_stand.py](virtual_test_stand.py) module provides this
+observation boundary without changing the four-node physics.
+
+The first ideal test stand has four named temperature sensors:
+
+| Sensor name | Modeled location |
+| --- | --- |
+| `cold_face_sensor` | cold TE face |
+| `hot_face_sensor` | hot TE face |
+| `cold_exchanger_sensor` | cold exchanger |
+| `hot_exchanger_sensor` | hot exchanger |
+
+Sensor name and modeled location are stored separately. A name identifies an
+instrument, while the location identifies which state it observes. Names must
+be unique, but the schema permits multiple named sensors at one location for a
+future redundant-sensor experiment.
+
+Each `TemperatureObservation` is one long-form reading with:
+
+- time in seconds;
+- sensor name;
+- modeled node location;
+- temperature in kelvin; and
+- the current in amperes at that time.
+
+`ObservationDataset` also stores the sensor definitions, requested sampling
+interval, and explicit unit strings. It validates that records are ordered by
+time, have no duplicate reading for one sensor at one time, reference known
+sensors, and use the location declared by each sensor.
+
+The baseline truth trajectory has 601 stored times at a 0.1 s RK4 step. The
+ideal sensors request measurements every 1 s from 0 through 60 s, producing 61
+measurement times. With four sensors, the long-form dataset has 244 records.
+The dataset does not contain the dense truth trajectory.
+
+`regular_measurement_times` keeps numerical and measurement resolution
+separate and always includes the exact experiment end. If the duration is not
+an integer multiple of the interval, the final measurement interval is
+shortened. `observe_contact_trajectory` returns an exact stored value when
+times align and otherwise linearly interpolates between adjacent RK4 states.
+Interpolation is an observation-layer approximation, not a replacement for
+time-step convergence of the physical solver.
+
+Current is evaluated at every measurement time with the same right-continuous
+convention as the integrator. At a scheduled switch the newly commanded
+current is recorded immediately, while finite-capacitance node temperatures
+remain continuous.
+
+Minimal use:
+
+~~~python
+from thermotwin import run_ideal_contact_reference_test_stand
+
+dataset = run_ideal_contact_reference_test_stand()
+
+print(dataset.measurement_times[:3])
+print(len(dataset.measurement_times))
+print(len(dataset.observations))
+print(dataset.observations_for("cold_face_sensor")[-1])
+~~~
+
+The baseline deliberately has exact sensors with no noise, bias, lag, missing
+readings, or calibration error. All four locations are observed first to
+validate the data path. Later identifiability studies can hide selected
+sensors without changing the truth solver.
+
+The companion exercises are in
+[notes/12_virtual_test_stand.md](notes/12_virtual_test_stand.md).
+
 ---
 
 ## 10. Forward physics-informed neural network
@@ -1275,7 +1349,7 @@ Checks:
 - step-size refinement; and
 - convergence toward the two-node aggregate as contact resistance decreases.
 
-### 12.10 test_contact_diagnostics.py
+### 12.10 `test_contact_diagnostics.py`
 
 Checks:
 
@@ -1285,7 +1359,7 @@ Checks:
 - undefined module and delivered COP at zero power; and
 - rejection of malformed trajectories.
 
-### 12.11 test_contact_experiments.py
+### 12.11 `test_contact_experiments.py`
 
 Checks:
 
@@ -1293,7 +1367,7 @@ Checks:
 - initial predictions and 60 s regression values; and
 - the transient distinction between module and delivered heat.
 
-### 12.12 test_contact_report.py
+### 12.12 `test_contact_report.py`
 
 Checks:
 
@@ -1301,6 +1375,21 @@ Checks:
 - larger contact drops and lower cold delivered heat in the stated sweep;
 - rejection of invalid sweep resistances; and
 - creation of a valid PNG report.
+
+### 12.13 `test_virtual_test_stand.py`
+
+Checks:
+
+- sensor-name, location, and sampling-interval validation;
+- configurable and redundant sensor placement;
+- exact start, regular, and final measurement times;
+- linear interpolation and all four node-to-sensor mappings;
+- right-continuous current alignment at a switch;
+- the 61-time, 244-observation frozen reference schema;
+- agreement of ideal final observations with hidden truth;
+- filtering by sensor without exposing the dense trajectory;
+- rejection of mislabeled, duplicate, unsorted, or malformed data; and
+- explicit time, temperature, and current units.
 
 ---
 
@@ -1337,7 +1426,14 @@ the data are generated from exactly the same equations. This is an important
 baseline, but it is an easier problem than real inference with noise and model
 mismatch.
 
-### 13.6 Hardware validation
+### 13.6 Ideal observation-layer validation
+
+The ideal test-stand tests verify that defined sensors sample the intended
+synthetic states at the intended times and that hidden dense truth is not part
+of the returned dataset. This validates data plumbing and schema semantics. It
+does not establish realistic sensor behavior or agreement with hardware.
+
+### 13.7 Hardware validation
 
 Hardware validation will require measured temperatures, currents, voltages,
 sensor timing and locations, calibration information, contact modeling, and a
@@ -1365,6 +1461,8 @@ The current results depend on these assumptions:
 11. The first forward and inverse PINNs use constant current only.
 12. The first inverse problem has one unknown parameter and noise-free paired
     temperature observations.
+13. The virtual test-stand baseline uses exact, instantaneous temperature
+    sensors at all four modeled nodes and records current without error.
 
 ### 14.1 Contact-resistance scope
 
@@ -1378,9 +1476,10 @@ forward PINN, and inverse-$K$ PINN still omit those explicit interfaces.
 - $G_c$ and $G_h$ connect exchanger nodes to fixed reservoirs.
 - $R$ remains module electrical resistance.
 
-The model does not yet include sensor location or lag, electrical contact
-resistance, or flowing-fluid states. Neither contact resistance has yet been
-inferred from data.
+The observation schema identifies modeled sensor locations, but it does not
+yet represent physical sensor geometry, noise, bias, lag, calibration error,
+electrical contact resistance, or flowing-fluid states. Neither thermal
+contact resistance has yet been inferred from data.
 
 ---
 
@@ -1403,6 +1502,7 @@ thermotwin/
 ├── forward_pinn.py
 ├── forward_pinn_report.py
 ├── inverse_thermal_conductance.py
+├── virtual_test_stand.py
 ├── requirements-pinn.txt
 ├── README.md
 ├── README_detailed.md
@@ -1420,7 +1520,8 @@ tests/
 ├── test_experiments.py
 ├── test_forward_pinn.py
 ├── test_forward_pinn_report.py
-└── test_inverse_thermal_conductance.py
+├── test_inverse_thermal_conductance.py
+└── test_virtual_test_stand.py
 ```
 
 The core public API is re-exported from `thermotwin/__init__.py`. Optional
@@ -1435,8 +1536,9 @@ The planned learning and implementation sequence is:
 
 1. Keep both conventional topologies, reports, and the learned baseline
    reproducible.
-2. Define the virtual test-stand dataset schema and observation model.
-3. Add configurable noise, bias, lag, downsampling, and missing observations.
+2. Preserve the ideal virtual test-stand dataset as a reproducible baseline.
+3. Use the configurable sampling interval to study downsampling, then add
+   noise, bias, lag, and missing observations one mechanism at a time.
 4. Split datasets by operating regime rather than by random time samples.
 5. Infer one contact resistance while holding $K$ and the other interface
    parameters fixed.

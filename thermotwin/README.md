@@ -106,6 +106,31 @@ By default, generated reports are written under `thermotwin/figures/`. That
 directory is ignored by Git because the figures can be reproduced from the
 committed code. Pass `--output PATH` to override the location deliberately.
 
+## Ideal virtual test stand
+
+The [virtual_test_stand.py](virtual_test_stand.py) module separates dense
+synthetic truth from the observations that a later inverse model is allowed to
+see. The first ideal baseline attaches one named sensor to each of the four
+contact-model nodes and records exact temperatures every 1 s. The hidden RK4
+trajectory still uses a 0.1 s step.
+
+Each long-form observation stores its time, sensor name, modeled location,
+temperature in kelvin, and aligned current in amperes. The sampler supports
+arbitrary sensor subsets, includes the exact final time, linearly interpolates
+when a requested measurement lies between stored truth states, and uses the
+same right-continuous current convention as the integrator.
+
+~~~python
+from thermotwin import run_ideal_contact_reference_test_stand
+
+dataset = run_ideal_contact_reference_test_stand()
+print(len(dataset.measurement_times))  # 61
+print(len(dataset.observations))       # 244
+~~~
+
+This baseline has no noise, bias, lag, or missing readings. Its exercises are
+in [notes/12_virtual_test_stand.md](notes/12_virtual_test_stand.md).
+
 ## First forward PINN
 
 The optional `thermotwin.forward_pinn` module contains a small PyTorch network

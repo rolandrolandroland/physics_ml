@@ -54,6 +54,18 @@ from .experiments import (
     run_two_node_experiment,
 )
 
+from .virtual_test_stand import (
+    IdealTemperatureSensor,
+    IdealVirtualTestStand,
+    ObservationDataset,
+    TemperatureObservation,
+    TemperatureSensorLocation,
+    ideal_four_sensor_test_stand,
+    observe_contact_trajectory,
+    regular_measurement_times,
+    run_ideal_contact_reference_test_stand,
+)
+
 __all__ = [
     "ContactExperimentResult",
     "ContactTrajectoryDiagnostics",
@@ -61,8 +73,13 @@ __all__ = [
     "FourNodeContactTemperatureRates",
     "FourNodeContactTemperatureTrajectory",
     "FourNodeContactThermalParameters",
+    "IdealTemperatureSensor",
+    "IdealVirtualTestStand",
+    "ObservationDataset",
     "SteadyStateTemperatures",
     "TemperatureRates",
+    "TemperatureObservation",
+    "TemperatureSensorLocation",
     "TemperatureTrajectory",
     "ThermoelectricParameters",
     "TrajectoryDiagnostics",
@@ -82,10 +99,14 @@ __all__ = [
     "hot_side_heat",
     "integrate_four_node_contact",
     "integrate_two_node",
+    "ideal_four_sensor_test_stand",
     "joule_heating",
     "peltier_heat",
+    "observe_contact_trajectory",
+    "regular_measurement_times",
     "run_two_node_experiment",
     "run_four_node_contact_experiment",
+    "run_ideal_contact_reference_test_stand",
     "thermal_contact_heat",
     "two_node_rhs",
     "two_node_steady_state",
