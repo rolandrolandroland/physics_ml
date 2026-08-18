@@ -20,12 +20,13 @@ foundation of that larger goal. It contains:
 9. An ideal virtual test stand with explicit sensors and sampled observations.
 10. Reproducible Gaussian temperature noise with per-sensor configuration.
 11. Fixed per-sensor temperature bias and a combined noise-plus-bias workflow.
-12. A forward physics-informed neural network, or PINN.
-13. An RK4-versus-PINN comparison report.
-14. A first inverse PINN that infers the module thermal conductance $K$ from
+12. First-order per-sensor dynamic lag applied before output sampling.
+13. A forward physics-informed neural network, or PINN.
+14. An RK4-versus-PINN comparison report.
+15. A first inverse PINN that infers the module thermal conductance $K$ from
    sparse synthetic temperature observations.
-15. Unit, sign, energy, sampling, noise, numerical, PINN, and identifiability
-    tests.
+16. Unit, sign, energy, sampling, measurement, numerical, PINN, and
+    identifiability tests.
 
 The package does **not** yet represent a hardware-validated digital twin. Its
 learned models are currently validated against the conventional equations that
@@ -61,7 +62,7 @@ standard library. Run all current ThermoTwin tests with:
 python3 -m unittest discover -s tests
 ```
 
-The current suite contains 110 focused tests. Optional learned-model and report
+The current suite contains 123 focused tests. Optional learned-model and report
 tests are skipped
 when their optional dependencies are not installed.
 
@@ -1074,6 +1075,100 @@ print(result.bias_model)
 print(len(result.dataset.observations))
 ~~~
 
+### 9.15 First-order dynamic sensor lag
+
+Noise and fixed bias alter reported values instantaneously. Dynamic lag adds
+sensor memory. For sensor $s$, the continuous first-order model is
+
+$$
+\tau_s\frac{dT_{m,s}}{dt}=T_{\mathrm{input},s}-T_{m,s},
+$$
+
+where $T_{m,s}$ is the reported sensor state, $T_{\mathrm{input},s}$ is the
+modeled node temperature, and $\tau_s$ is the time constant in seconds. The
+implemented interval update treats the current input temperature as the
+relaxation target:
+
+$$
+a=\exp\left(-\frac{\Delta t}{\tau_s}\right),
+$$
+
+$$
+T_{m,s,k}=aT_{m,s,k-1}+(1-a)T_{\mathrm{input},s,k}.
+$$
+
+The first reported state is initialized to the first input temperature. A
+zero time constant bypasses the recurrence and reproduces the input exactly.
+For constant input, any initial difference decays exponentially. Actual time
+differences are used, so irregularly spaced records are supported.
+
+`FirstOrderTemperatureLag` stores a nonnegative finite default time constant
+and optional named per-sensor overrides. The frozen generic baseline is:
+
+| Sensor | Time constant |
+| --- | ---: |
+| Cold face | 2 s |
+| Hot face | 0 s |
+| Cold exchanger | 0 s |
+| Hot exchanger | 0 s |
+
+These values create an isolated learning case and are not calibrated sensor
+properties. A larger time constant makes the cold-face reading respond more
+slowly.
+
+The high-level reference workflow calculates lag on the dense 0.1 s ideal
+signal before sampling the output every 1 s. Consequently, asking for 5 s
+output produces the same lagged values at common times as selecting every
+fifth value from the 1 s output. Filtering only after coarse downsampling would
+make sensor dynamics depend artificially on the logging interval.
+
+For the frozen cooling transient:
+
+| Quantity | Value |
+| --- | ---: |
+| Initial cold-face lag error | 0 K |
+| Cold-face error at 1 s | +0.204232 K |
+| Maximum cold-face lag error | +0.376595 K near 4 s |
+| Final ideal cold face | 294.795190 K |
+| Final lagged cold face | 294.853072 K |
+| Final cold-face lag error | +0.057882 K |
+
+The positive error means the lagged sensor remains warmer while its node is
+cooling. The error shrinks later because the physical temperature changes more
+slowly. The other three sensors remain identical to ideal in this baseline.
+
+`run_lagged_noisy_biased_contact_reference_test_stand` applies effects in this
+order:
+
+~~~text
+dense node truth -> sensor lag -> output sampling -> fixed bias -> random noise
+~~~
+
+The returned `LaggedNoisyBiasedTemperatureResult` retains all three
+configurations without exposing ideal truth. Random measurement noise is added
+after lag rather than being smoothed by the lag filter.
+
+This lag is an observation filter only. It assumes the physical sensor does
+not draw enough heat to change the modeled node temperature. Representing
+sensor mass and thermal contact as part of the physical network would require
+additional thermal states and coupling terms.
+
+Minimal use:
+
+~~~python
+from thermotwin import (
+    run_lagged_contact_reference_test_stand,
+    run_lagged_noisy_biased_contact_reference_test_stand,
+)
+
+lag_only = run_lagged_contact_reference_test_stand()
+all_effects = run_lagged_noisy_biased_contact_reference_test_stand()
+
+print(lag_only.lag_model)
+print(all_effects.bias_model)
+print(all_effects.noise_model)
+~~~
+
 ---
 
 ## 10. Forward physics-informed neural network
@@ -1562,6 +1657,24 @@ Checks:
 - retention of both configurations in the combined workflow; and
 - configurable downsampling of the bias-only reference.
 
+### 12.16 `test_measurement_lag.py`
+
+Checks:
+
+- the frozen 2 s cold-face-only generic time constant;
+- rejection of negative, non-finite, duplicate, or malformed settings;
+- zero lag as the exact input-data limiting case;
+- equilibrium under constant temperature;
+- the exponential response to a changed target;
+- correct use of irregular observation intervals;
+- rejection of overrides for unknown sensors;
+- warmer cold-face readings during the cooling transient and no changes to
+  other sensors;
+- preservation of time, current, sensor, location, unit, and count fields;
+- greater lag for a larger time constant;
+- dense lag evaluation before output downsampling; and
+- lag-before-bias/noise ordering with all configurations retained.
+
 ---
 
 ## 13. Validation levels and what they mean
@@ -1618,7 +1731,15 @@ preservation, the zero-bias limit, and composition with Gaussian noise. They
 do not establish that a real sensor has a constant offset or determine its
 calibration bias from data.
 
-### 13.9 Hardware validation
+### 13.9 Synthetic sensor-lag validation
+
+The lag tests verify the first-order recurrence, zero-lag and equilibrium
+limits, response direction, time-interval handling, dense-before-sparse
+ordering, and composition with other synthetic effects. They do not identify
+a real sensor time constant or validate the assumption that the sensor has no
+thermal influence on the measured node.
+
+### 13.10 Hardware validation
 
 Hardware validation will require measured temperatures, currents, voltages,
 sensor timing and locations, calibration information, contact modeling, and a
@@ -1652,6 +1773,9 @@ The current results depend on these assumptions:
     no bias, lag, missingness, temporal correlation, or current error.
 15. The first bias-only dataset adds a constant +0.10 K cold-face offset. The
     combined workflow adds that bias and the frozen Gaussian noise model.
+16. The first lag model uses a 2 s cold-face sensor time constant, initializes
+    the sensor at the first node temperature, and does not feed back into the
+    thermal state equations.
 
 ### 14.1 Contact-resistance scope
 
@@ -1666,10 +1790,10 @@ forward PINN, and inverse-$K$ PINN still omit those explicit interfaces.
 - $R$ remains module electrical resistance.
 
 The observation schema identifies modeled sensor locations, but it does not
-yet represent physical sensor geometry, empirically calibrated noise or bias,
-lag, missingness, automated calibration, electrical contact resistance, or
-flowing-fluid states. Neither thermal contact resistance has yet been inferred
-from data.
+yet represent physical sensor geometry, empirically calibrated noise, bias,
+or lag, missingness, automated calibration, sensor thermal loading,
+electrical contact resistance, or flowing-fluid states. Neither thermal
+contact resistance has yet been inferred from data.
 
 ---
 
@@ -1695,6 +1819,7 @@ thermotwin/
 ├── virtual_test_stand.py
 ├── measurement_noise.py
 ├── measurement_bias.py
+├── measurement_lag.py
 ├── requirements-pinn.txt
 ├── README.md
 ├── README_detailed.md
@@ -1715,7 +1840,8 @@ tests/
 ├── test_inverse_thermal_conductance.py
 ├── test_virtual_test_stand.py
 ├── test_measurement_noise.py
-└── test_measurement_bias.py
+├── test_measurement_bias.py
+└── test_measurement_lag.py
 ```
 
 The core public API is re-exported from `thermotwin/__init__.py`. Optional
@@ -1731,8 +1857,8 @@ The planned learning and implementation sequence is:
 1. Keep both conventional topologies, reports, and the learned baseline
    reproducible.
 2. Preserve the ideal virtual test-stand dataset as a reproducible baseline.
-3. Preserve the configurable downsampling, Gaussian-noise, and fixed-bias
-   baselines, then add lag and missing observations one mechanism at a time.
+3. Preserve the configurable downsampling, Gaussian-noise, fixed-bias, and
+   first-order-lag baselines, then add missing observations.
 4. Split datasets by operating regime rather than by random time samples.
 5. Infer one contact resistance while holding $K$ and the other interface
    parameters fixed.

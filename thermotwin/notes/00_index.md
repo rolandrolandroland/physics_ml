@@ -19,7 +19,7 @@ choice. They are intentionally separate from the package README.
 | [09 — Inverse thermal conductance](09_inverse_thermal_conductance.md) | Understand sparse observations, trainable $K$, inverse losses, identifiability, and validation | Not started |
 | [10 — Contact-aware transient](10_contact_aware_transient.md) | Understand modular topology, contact heat signs, four-node balances, RK4, and limiting cases | Not started |
 | [11 — Contact reference and diagnostics](11_contact_reference_diagnostics.md) | Understand the frozen contact experiment, derived histories, energy closure, COP definitions, topology comparison, and resistance sweep | Not started |
-| [12 — Virtual test stand](12_virtual_test_stand.md) | Understand sensor locations, observation schemas, sampling, interpolation, current alignment, hidden truth, random noise, and fixed sensor bias | Not started |
+| [12 — Virtual test stand](12_virtual_test_stand.md) | Understand sensor locations, observation schemas, sampling, interpolation, hidden truth, random noise, fixed bias, and first-order sensor lag | Not started |
 
 Suggested statuses are `Not started`, `Draft`, `Revising`, and `Reviewed`.
 

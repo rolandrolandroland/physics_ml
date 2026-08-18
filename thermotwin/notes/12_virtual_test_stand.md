@@ -22,12 +22,15 @@ The relevant files are:
   interpolation, and the ideal reference dataset;
 - `thermotwin/measurement_noise.py`: reproducible Gaussian temperature noise;
 - `thermotwin/measurement_bias.py`: fixed per-sensor temperature offsets;
+- `thermotwin/measurement_lag.py`: first-order dynamic sensor response;
 - `tests/test_virtual_test_stand.py`: schema, timing, interpolation, current,
   and validation checks;
 - `tests/test_measurement_noise.py`: determinism, zero-noise, per-sensor, and
   sample-statistics checks;
 - `tests/test_measurement_bias.py`: zero-bias, persistence, isolation, and
-  composition checks; and
+  composition checks;
+- `tests/test_measurement_lag.py`: time constants, dynamics, ordering, and
+  limiting-case checks; and
 - `thermotwin/README_detailed.md`: the full package-level explanation.
 
 Make predictions before running code. Include units in calculations. Preserve
@@ -484,10 +487,10 @@ schema, then explain what each protects.
 ## Block 8 — Explore and design observation-model extensions
 
 The ideal sampler already supports different measurement intervals, and the
-first independent Gaussian temperature-noise layer is now implemented. Use
-these features to explore downsampling and noise. Bias, lag, and missing data
-remain future effects that should stay separate until each assumption is
-understood and reviewed.
+independent Gaussian temperature-noise, fixed-bias, and first-order sensor-lag
+layers are now implemented. Use these features to explore downsampling and
+measurement effects. Missing data remains a future effect that should stay
+separate until its assumptions are understood and reviewed.
 
 ### Exercise 29: Downsampling
 
@@ -745,7 +748,121 @@ help estimate sensor offsets.
 
 ### Checkpoint 6
 
-Ask Codex to review Exercises 41–46 before implementing sensor lag.
+Ask Codex to review Exercises 41–46 before analyzing sensor lag or implementing
+missing observations.
+
+---
+
+## Block 11 — Trace the implemented first-order lag layer
+
+### Exercise 47: Derive the direction of the lagged response
+
+Start from
+
+$$
+\tau\frac{dT_m}{dt}=T_{\mathrm{node}}-T_m.
+$$
+
+1. Determine the sign of $dT_m/dt$ when the node is warmer than the sensor.
+2. Determine it when the node is colder.
+3. Explain why $T_m$ approaches rather than instantly equals the node.
+4. State the units of every term.
+5. Explain the limiting behavior as $\tau$ approaches zero and infinity.
+
+**My derivation:**
+
+### Exercise 48: Calculate one discrete lag step
+
+Use $\tau=2$ s, $\Delta t=1$ s, previous sensor temperature 300 K, and current
+node temperature 299 K.
+
+1. Calculate $a=\exp(-\Delta t/\tau)$.
+2. Calculate the new reported temperature.
+3. Verify that it lies between 299 K and 300 K.
+4. Repeat for $\tau=4$ s and explain which sensor responds more slowly.
+
+**My calculations:**
+
+### Exercise 49: Predict the cold-face reference
+
+The cold face cools after current is applied, while its virtual sensor has a
+2 s time constant.
+
+Before running the workflow, predict:
+
+1. the initial lag error;
+2. the sign of later lag error;
+3. whether the error grows indefinitely;
+4. what happens as the physical trajectory approaches steady state; and
+5. which other sensor readings change.
+
+Record the errors at 1 s, the maximum-error time, and 60 s.
+
+**My predictions and results:**
+
+### Exercise 50: Explain dense filtering before downsampling
+
+Compare:
+
+~~~text
+dense truth -> lag -> sample every 5 s
+dense truth -> sample every 5 s -> lag
+~~~
+
+1. Why can these produce different sensor responses?
+2. Which better represents a physical sensor evolving between saved readings?
+3. Compare the implemented 1 s and 5 s outputs at common times.
+4. Why does the high-level workflow still allow the low-level filter to accept
+   irregularly spaced data?
+
+**My explanation:**
+
+### Exercise 51: Trace the complete measurement order
+
+The combined baseline uses
+
+~~~text
+truth -> lag -> sampling -> bias -> noise
+~~~
+
+1. Why should node truth enter the lag model before random measurement noise?
+2. What mistake would result from filtering independent readout noise as if it
+   were node temperature?
+3. Why do fixed additive bias and additive noise commute mathematically?
+4. Why does lag generally not commute with noise?
+5. Where is every configuration retained?
+
+**My code trace:**
+
+### Exercise 52: Distinguish sensor lag from sensor thermal loading
+
+The implemented lag changes only the reported temperature.
+
+1. Does it remove heat from the modeled node?
+2. Does it add a new physical thermal capacitance to the four-node model?
+3. What equations would be required to model a sensor bead and its contact as
+   a coupled physical node?
+4. When might sensor thermal loading be negligible?
+5. Why must hardware validation revisit this assumption?
+
+**My explanation:**
+
+### Exercise 53: Design a time-constant identification experiment
+
+Propose an input that makes sensor lag observable.
+
+1. Would a steady temperature or sharp transient be more informative?
+2. Which node and sensor would you monitor?
+3. What sampling interval would you choose relative to the expected time
+   constant?
+4. How could model thermal inertia be confused with sensor lag?
+5. What independent reference measurement could help separate them?
+
+**My experiment design:**
+
+### Checkpoint 7
+
+Ask Codex to review Exercises 47–53 before implementing missing observations.
 
 ---
 

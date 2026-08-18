@@ -187,6 +187,38 @@ print(result.bias_model)
 Unlike zero-mean random noise, a fixed sensor bias does not diminish when many
 readings are averaged.
 
+## First-order sensor lag
+
+The [measurement_lag.py](measurement_lag.py) module represents a sensor that
+relaxes toward the modeled node temperature with a first-order time constant.
+The generic baseline gives `cold_face_sensor` a 2 s time constant and leaves
+the other sensors instantaneous. The first sensor reading is initialized to
+the first node temperature.
+
+~~~text
+a = exp(-time_step / time_constant)
+lagged_temperature = a * previous_lagged_temperature
+                     + (1 - a) * current_node_temperature
+~~~
+
+The dense 0.1 s truth signal is filtered before readings are sampled every
+1 s. This prevents changing the output sampling interval from changing the
+underlying simulated sensor response. The combined workflow then applies
+fixed bias and Gaussian noise after lag.
+
+~~~python
+from thermotwin import run_lagged_contact_reference_test_stand
+
+result = run_lagged_contact_reference_test_stand()
+print(result.lag_model)
+print(result.dataset.observations_for("cold_face_sensor")[:3])
+~~~
+
+For the frozen cooling transient, the lagged cold-face reading remains warmer
+than the instantaneous face temperature. The difference peaks near 0.377 K
+and is about 0.058 K at 60 s. This output filter does not feed heat back into
+the thermal model and is not a calibrated physical sensor model.
+
 ## First forward PINN
 
 The optional `thermotwin.forward_pinn` module contains a small PyTorch network
