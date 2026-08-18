@@ -131,6 +131,31 @@ print(len(dataset.observations))       # 244
 This baseline has no noise, bias, lag, or missing readings. Its exercises are
 in [notes/12_virtual_test_stand.md](notes/12_virtual_test_stand.md).
 
+## Reproducible temperature noise
+
+The separate [measurement_noise.py](measurement_noise.py) module applies
+independent zero-mean Gaussian errors to temperature readings without changing
+the immutable ideal dataset. The generic learning baseline uses a 0.05 K
+standard deviation and random seed 2026. It is synthetic and is not a claim
+about any physical sensor's accuracy.
+
+The noise configuration supports a default standard deviation plus named
+per-sensor overrides. Times, currents, sensor names, locations, units, and
+record counts remain unchanged. A zero standard deviation is tested as the
+exact ideal-data limiting case.
+
+~~~python
+from thermotwin import run_noisy_contact_reference_test_stand
+
+result = run_noisy_contact_reference_test_stand()
+print(result.noise_model)
+print(result.dataset.observations[:4])
+~~~
+
+The same seed reproduces the same readings. Different seeds create different
+synthetic trials. Bias, lag, missing data, and current-measurement error are
+not yet included.
+
 ## First forward PINN
 
 The optional `thermotwin.forward_pinn` module contains a small PyTorch network

@@ -18,11 +18,13 @@ foundation of that larger goal. It contains:
 7. Reproducible 1 A two-node and contact-aware reference experiments.
 8. A contact-resistance sweep and two-topology comparison report.
 9. An ideal virtual test stand with explicit sensors and sampled observations.
-10. A forward physics-informed neural network, or PINN.
-11. An RK4-versus-PINN comparison report.
-12. A first inverse PINN that infers the module thermal conductance $K$ from
+10. Reproducible Gaussian temperature noise with per-sensor configuration.
+11. A forward physics-informed neural network, or PINN.
+12. An RK4-versus-PINN comparison report.
+13. A first inverse PINN that infers the module thermal conductance $K$ from
    sparse synthetic temperature observations.
-13. Unit, sign, energy, sampling, numerical, PINN, and identifiability tests.
+14. Unit, sign, energy, sampling, noise, numerical, PINN, and identifiability
+    tests.
 
 The package does **not** yet represent a hardware-validated digital twin. Its
 learned models are currently validated against the conventional equations that
@@ -58,7 +60,7 @@ standard library. Run all current ThermoTwin tests with:
 python3 -m unittest discover -s tests
 ```
 
-The current suite contains 88 focused tests. Optional learned-model and report
+The current suite contains 99 focused tests. Optional learned-model and report
 tests are skipped
 when their optional dependencies are not installed.
 
@@ -936,6 +938,77 @@ sensors without changing the truth solver.
 The companion exercises are in
 [notes/12_virtual_test_stand.md](notes/12_virtual_test_stand.md).
 
+### 9.13 Reproducible Gaussian temperature noise
+
+The ideal dataset is the limiting case against which measurement effects are
+checked. The separate [measurement_noise.py](measurement_noise.py) module
+creates a new noisy dataset without modifying that ideal input.
+
+`GaussianTemperatureNoise` defines:
+
+- one default temperature-error standard deviation in kelvin;
+- optional named per-sensor standard-deviation overrides; and
+- an integer random seed.
+
+All standard deviations must be finite and nonnegative. Override names must be
+unique and must refer to sensors in the dataset. The frozen generic learning
+case uses
+
+~~~text
+independent Gaussian temperature errors
+mean = 0 K
+standard deviation = 0.05 K
+random seed = 2026
+~~~
+
+These are controlled synthetic settings, not specifications or calibration
+results for real sensors. The initial model assumes errors are independent
+between sensors and times, have the same distribution at every operating
+condition, and affect only temperature. It does not perturb current, time, or
+sensor labels.
+
+`apply_gaussian_temperature_noise` returns a `TemperatureNoiseResult` holding
+the noisy `ObservationDataset` and the exact configuration used to produce
+it. It does not include the ideal dataset or dense truth. Because all records
+are immutable, callers can retain the ideal dataset separately for validation
+without the noise function altering it.
+
+For the 244-reading seed-2026 baseline, the realized temperature errors have
+approximately:
+
+| Statistic | Realized value |
+| --- | ---: |
+| Mean error | -0.003400 K |
+| RMS error | 0.051830 K |
+| Maximum absolute error | 0.187827 K |
+
+The realized finite-sample mean is not exactly zero. Zero mean describes the
+generating distribution; any finite trial has sampling variation. Repeated
+trials require different recorded seeds.
+
+Minimal use:
+
+~~~python
+from thermotwin import (
+    GaussianTemperatureNoise,
+    run_noisy_contact_reference_test_stand,
+)
+
+noise = GaussianTemperatureNoise(
+    default_standard_deviation=0.05,
+    random_seed=2026,
+    sensor_standard_deviations=(("cold_face_sensor", 0.10),),
+)
+result = run_noisy_contact_reference_test_stand(noise_model=noise)
+
+print(result.noise_model)
+print(result.dataset.observations[:4])
+~~~
+
+Setting every standard deviation to zero exactly reproduces the ideal
+temperature readings. This limiting case checks that the transformation adds
+only the intended measurement effect.
+
 ---
 
 ## 10. Forward physics-informed neural network
@@ -1391,6 +1464,23 @@ Checks:
 - rejection of mislabeled, duplicate, unsorted, or malformed data; and
 - explicit time, temperature, and current units.
 
+### 12.14 `test_measurement_noise.py`
+
+Checks:
+
+- the frozen 0.05 K, seed-2026 generic configuration;
+- rejection of negative, non-finite, duplicate, or malformed settings;
+- zero noise as the exact ideal-data limiting case;
+- identical readings for identical seeds and different readings for different
+  seeds;
+- preservation of time, current, sensor, location, unit, and count fields;
+- both signs, near-zero sample mean, and expected RMS scale;
+- named per-sensor standard-deviation overrides;
+- stable random draws for unaffected sensors when one override changes;
+- rejection of overrides for unknown sensors; and
+- preservation of observation counts under the high-level noisy workflow and
+  configurable downsampling.
+
 ---
 
 ## 13. Validation levels and what they mean
@@ -1433,7 +1523,14 @@ synthetic states at the intended times and that hidden dense truth is not part
 of the returned dataset. This validates data plumbing and schema semantics. It
 does not establish realistic sensor behavior or agreement with hardware.
 
-### 13.7 Hardware validation
+### 13.7 Synthetic measurement-noise validation
+
+The noise tests verify deterministic random generation, schema preservation,
+the zero-noise limit, and broad statistical properties of one controlled
+sample. They do not establish the distribution, magnitude, independence, or
+stationarity of errors from a real sensor.
+
+### 13.8 Hardware validation
 
 Hardware validation will require measured temperatures, currents, voltages,
 sensor timing and locations, calibration information, contact modeling, and a
@@ -1463,6 +1560,8 @@ The current results depend on these assumptions:
     temperature observations.
 13. The virtual test-stand baseline uses exact, instantaneous temperature
     sensors at all four modeled nodes and records current without error.
+14. The first noisy dataset adds independent Gaussian temperature errors with
+    no bias, lag, missingness, temporal correlation, or current error.
 
 ### 14.1 Contact-resistance scope
 
@@ -1477,9 +1576,10 @@ forward PINN, and inverse-$K$ PINN still omit those explicit interfaces.
 - $R$ remains module electrical resistance.
 
 The observation schema identifies modeled sensor locations, but it does not
-yet represent physical sensor geometry, noise, bias, lag, calibration error,
-electrical contact resistance, or flowing-fluid states. Neither thermal
-contact resistance has yet been inferred from data.
+yet represent physical sensor geometry, empirically calibrated noise, bias,
+lag, missingness, calibration error, electrical contact resistance, or
+flowing-fluid states. Neither thermal contact resistance has yet been inferred
+from data.
 
 ---
 
@@ -1503,6 +1603,7 @@ thermotwin/
 ├── forward_pinn_report.py
 ├── inverse_thermal_conductance.py
 ├── virtual_test_stand.py
+├── measurement_noise.py
 ├── requirements-pinn.txt
 ├── README.md
 ├── README_detailed.md
@@ -1521,7 +1622,8 @@ tests/
 ├── test_forward_pinn.py
 ├── test_forward_pinn_report.py
 ├── test_inverse_thermal_conductance.py
-└── test_virtual_test_stand.py
+├── test_virtual_test_stand.py
+└── test_measurement_noise.py
 ```
 
 The core public API is re-exported from `thermotwin/__init__.py`. Optional
@@ -1537,8 +1639,8 @@ The planned learning and implementation sequence is:
 1. Keep both conventional topologies, reports, and the learned baseline
    reproducible.
 2. Preserve the ideal virtual test-stand dataset as a reproducible baseline.
-3. Use the configurable sampling interval to study downsampling, then add
-   noise, bias, lag, and missing observations one mechanism at a time.
+3. Preserve the configurable downsampling and Gaussian-noise baselines, then
+   add bias, lag, and missing observations one mechanism at a time.
 4. Split datasets by operating regime rather than by random time samples.
 5. Infer one contact resistance while holding $K$ and the other interface
    parameters fixed.

@@ -66,6 +66,14 @@ from .virtual_test_stand import (
     run_ideal_contact_reference_test_stand,
 )
 
+from .measurement_noise import (
+    GaussianTemperatureNoise,
+    TemperatureNoiseResult,
+    apply_gaussian_temperature_noise,
+    reference_gaussian_temperature_noise,
+    run_noisy_contact_reference_test_stand,
+)
+
 __all__ = [
     "ContactExperimentResult",
     "ContactTrajectoryDiagnostics",
@@ -73,12 +81,14 @@ __all__ = [
     "FourNodeContactTemperatureRates",
     "FourNodeContactTemperatureTrajectory",
     "FourNodeContactThermalParameters",
+    "GaussianTemperatureNoise",
     "IdealTemperatureSensor",
     "IdealVirtualTestStand",
     "ObservationDataset",
     "SteadyStateTemperatures",
     "TemperatureRates",
     "TemperatureObservation",
+    "TemperatureNoiseResult",
     "TemperatureSensorLocation",
     "TemperatureTrajectory",
     "ThermoelectricParameters",
@@ -88,6 +98,7 @@ __all__ = [
     "TwoNodeThermalParameters",
     "PiecewiseConstantCurrent",
     "coefficient_of_performance",
+    "apply_gaussian_temperature_noise",
     "cold_side_heat",
     "constant_current_contact_reference_experiment",
     "constant_current_reference_experiment",
@@ -104,9 +115,11 @@ __all__ = [
     "peltier_heat",
     "observe_contact_trajectory",
     "regular_measurement_times",
+    "reference_gaussian_temperature_noise",
     "run_two_node_experiment",
     "run_four_node_contact_experiment",
     "run_ideal_contact_reference_test_stand",
+    "run_noisy_contact_reference_test_stand",
     "thermal_contact_heat",
     "two_node_rhs",
     "two_node_steady_state",

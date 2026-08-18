@@ -20,8 +20,11 @@ The relevant files are:
 - `thermotwin/contact_experiments.py`: the frozen physical experiment;
 - `thermotwin/virtual_test_stand.py`: sensor definitions, sampling,
   interpolation, and the ideal reference dataset;
+- `thermotwin/measurement_noise.py`: reproducible Gaussian temperature noise;
 - `tests/test_virtual_test_stand.py`: schema, timing, interpolation, current,
-  and validation checks; and
+  and validation checks;
+- `tests/test_measurement_noise.py`: determinism, zero-noise, per-sensor, and
+  sample-statistics checks; and
 - `thermotwin/README_detailed.md`: the full package-level explanation.
 
 Make predictions before running code. Include units in calculations. Preserve
@@ -477,9 +480,11 @@ schema, then explain what each protects.
 
 ## Block 8 — Explore and design observation-model extensions
 
-The ideal sampler already supports different measurement intervals. Use that
-feature to explore downsampling. Do not implement noise, bias, lag, or missing
-data until the ideal baseline is understood and reviewed.
+The ideal sampler already supports different measurement intervals, and the
+first independent Gaussian temperature-noise layer is now implemented. Use
+these features to explore downsampling and noise. Bias, lag, and missing data
+remain future effects that should stay separate until each assumption is
+understood and reviewed.
 
 ### Exercise 29: Downsampling
 
@@ -494,7 +499,9 @@ Compare 0.5, 1, 2, 5, and 10 s measurement intervals.
 
 ### Exercise 30: Additive noise
 
-Propose a zero-mean temperature-noise model.
+Before reading `measurement_noise.py`, propose a zero-mean temperature-noise
+model. Then compare it with the frozen generic baseline: independent Gaussian
+errors, 0.05 K standard deviation, and random seed 2026.
 
 1. State its distribution and standard deviation in kelvin.
 2. Should each sensor use the same noise level?
@@ -553,7 +560,91 @@ which other parameters are assumed known.
 
 ### Checkpoint 4
 
-Ask Codex to review Exercises 29–34 before adding measurement imperfections.
+Ask Codex to review Exercises 29–34 before analyzing the implemented noise
+layer.
+
+---
+
+## Block 9 — Trace the implemented Gaussian-noise layer
+
+### Exercise 35: Separate distribution parameters from realized errors
+
+The baseline distribution has mean zero and standard deviation 0.05 K.
+
+1. Must one finite dataset have an error mean of exactly zero?
+2. Must its RMS error equal exactly 0.05 K?
+3. Why should errors include both signs?
+4. What happens to these statistics as the number of independent readings
+   becomes very large?
+
+**My explanation:**
+
+### Exercise 36: Verify immutability and schema preservation
+
+Read `apply_gaussian_temperature_noise`.
+
+1. Which field of each observation is replaced?
+2. Which fields are copied exactly?
+3. Why is returning a new dataset safer than modifying the ideal dataset?
+4. Why does `TemperatureNoiseResult` retain the noise configuration?
+5. Why does it not retain ideal truth?
+
+**My code trace:**
+
+### Exercise 37: Predict the zero-noise limiting case
+
+Set the default standard deviation to 0 K with no overrides.
+
+1. Predict every returned temperature.
+2. Predict whether record counts or metadata change.
+3. Explain why this is a limiting-case test rather than a useful noisy
+   experiment.
+4. Find the exact automated test.
+
+**My prediction and result:**
+
+### Exercise 38: Explain the random seed
+
+Run the transformation twice with seed 2026 and once with a different seed.
+
+1. Which datasets should match exactly?
+2. Why is reproducibility essential for debugging and regression tests?
+3. Why should uncertainty studies eventually use many different recorded
+   seeds?
+4. Does fixing a seed make the measurements physically less random?
+
+**My explanation:**
+
+### Exercise 39: Configure one sensor differently
+
+Use zero default noise and a 0.10 K override for `cold_face_sensor`.
+
+1. Predict which records may change.
+2. Predict which records must remain exact.
+3. Why are override names validated against dataset sensor names?
+4. Design a physically motivated case in which different sensors would have
+   different uncertainty.
+
+**My prediction and result:**
+
+### Exercise 40: Calculate realized error statistics
+
+Generate the frozen noisy reference and separately generate the ideal dataset.
+For the 244 paired readings, calculate:
+
+1. mean temperature error;
+2. RMS temperature error;
+3. maximum absolute error; and
+4. the same statistics for each sensor individually.
+
+Explain why comparing the two datasets is appropriate for synthetic
+validation but would not be possible with unknown hardware truth.
+
+**My calculations and interpretation:**
+
+### Checkpoint 5
+
+Ask Codex to review Exercises 35–40 before implementing bias or lag.
 
 ---
 
