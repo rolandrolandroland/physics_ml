@@ -19,11 +19,12 @@ foundation of that larger goal. It contains:
 8. A contact-resistance sweep and two-topology comparison report.
 9. An ideal virtual test stand with explicit sensors and sampled observations.
 10. Reproducible Gaussian temperature noise with per-sensor configuration.
-11. A forward physics-informed neural network, or PINN.
-12. An RK4-versus-PINN comparison report.
-13. A first inverse PINN that infers the module thermal conductance $K$ from
+11. Fixed per-sensor temperature bias and a combined noise-plus-bias workflow.
+12. A forward physics-informed neural network, or PINN.
+13. An RK4-versus-PINN comparison report.
+14. A first inverse PINN that infers the module thermal conductance $K$ from
    sparse synthetic temperature observations.
-14. Unit, sign, energy, sampling, noise, numerical, PINN, and identifiability
+15. Unit, sign, energy, sampling, noise, numerical, PINN, and identifiability
     tests.
 
 The package does **not** yet represent a hardware-validated digital twin. Its
@@ -60,7 +61,7 @@ standard library. Run all current ThermoTwin tests with:
 python3 -m unittest discover -s tests
 ```
 
-The current suite contains 99 focused tests. Optional learned-model and report
+The current suite contains 110 focused tests. Optional learned-model and report
 tests are skipped
 when their optional dependencies are not installed.
 
@@ -1009,6 +1010,70 @@ Setting every standard deviation to zero exactly reproduces the ideal
 temperature readings. This limiting case checks that the transformation adds
 only the intended measurement effect.
 
+### 9.14 Fixed per-sensor temperature bias
+
+Random noise and systematic bias represent different measurement errors. The
+[measurement_bias.py](measurement_bias.py) module defines a constant additive
+offset for each sensor:
+
+$$
+T_{\mathrm{observed},s}(t)
+=T_{\mathrm{input},s}(t)+b_s.
+$$
+
+`FixedTemperatureBias` stores one default offset in kelvin and optional named
+per-sensor overrides. Biases may be positive, negative, or zero, but must be
+finite. Override names must be unique and must refer to sensors in the input
+dataset.
+
+The frozen generic learning baseline uses:
+
+| Sensor | Fixed bias |
+| --- | ---: |
+| Cold face | +0.10 K |
+| Hot face | 0 K |
+| Cold exchanger | 0 K |
+| Hot exchanger | 0 K |
+
+This deliberately isolates one systematic error. It is not a measured
+calibration offset. At all 61 cold-face measurement times, the bias-only
+reading is exactly 0.10 K above ideal truth. Averaging those errors still gives
+0.10 K, unlike independent zero-mean noise whose sample mean tends toward zero
+as the sample count increases.
+
+`apply_fixed_temperature_bias` returns a new `TemperatureBiasResult` and does
+not alter the input dataset. It preserves times, current, sensor definitions,
+locations, units, ordering, and record count. A zero-bias model exactly
+reproduces the input readings.
+
+The high-level `run_noisy_biased_contact_reference_test_stand` workflow applies
+Gaussian noise followed by fixed bias and returns a
+`NoisyBiasedTemperatureResult`. That result retains both configurations but
+does not expose ideal truth. Because both implemented effects are additive,
+reversing their order agrees to floating-point precision. Future lag and
+missing-data effects will not generally commute this way.
+
+Minimal bias-only use:
+
+~~~python
+from thermotwin import run_biased_contact_reference_test_stand
+
+result = run_biased_contact_reference_test_stand()
+print(result.bias_model)
+print(result.dataset.observations_for("cold_face_sensor")[-1])
+~~~
+
+Combined noise-and-bias use:
+
+~~~python
+from thermotwin import run_noisy_biased_contact_reference_test_stand
+
+result = run_noisy_biased_contact_reference_test_stand()
+print(result.noise_model)
+print(result.bias_model)
+print(len(result.dataset.observations))
+~~~
+
 ---
 
 ## 10. Forward physics-informed neural network
@@ -1481,6 +1546,22 @@ Checks:
 - preservation of observation counts under the high-level noisy workflow and
   configurable downsampling.
 
+### 12.15 `test_measurement_bias.py`
+
+Checks:
+
+- the frozen +0.10 K cold-face-only generic bias;
+- rejection of non-finite, duplicate, or malformed bias settings;
+- zero bias as the exact input-data limiting case;
+- positive, negative, default, and named per-sensor offsets;
+- preservation of time, current, sensor, location, unit, and count fields;
+- persistence of the cold-face offset across all 61 measurements;
+- rejection of overrides for unknown sensors;
+- agreement of noise-then-bias and bias-then-noise to floating-point
+  precision;
+- retention of both configurations in the combined workflow; and
+- configurable downsampling of the bias-only reference.
+
 ---
 
 ## 13. Validation levels and what they mean
@@ -1530,7 +1611,14 @@ the zero-noise limit, and broad statistical properties of one controlled
 sample. They do not establish the distribution, magnitude, independence, or
 stationarity of errors from a real sensor.
 
-### 13.8 Hardware validation
+### 13.8 Synthetic fixed-bias validation
+
+The bias tests verify constant additive offsets, sensor isolation, schema
+preservation, the zero-bias limit, and composition with Gaussian noise. They
+do not establish that a real sensor has a constant offset or determine its
+calibration bias from data.
+
+### 13.9 Hardware validation
 
 Hardware validation will require measured temperatures, currents, voltages,
 sensor timing and locations, calibration information, contact modeling, and a
@@ -1562,6 +1650,8 @@ The current results depend on these assumptions:
     sensors at all four modeled nodes and records current without error.
 14. The first noisy dataset adds independent Gaussian temperature errors with
     no bias, lag, missingness, temporal correlation, or current error.
+15. The first bias-only dataset adds a constant +0.10 K cold-face offset. The
+    combined workflow adds that bias and the frozen Gaussian noise model.
 
 ### 14.1 Contact-resistance scope
 
@@ -1576,8 +1666,8 @@ forward PINN, and inverse-$K$ PINN still omit those explicit interfaces.
 - $R$ remains module electrical resistance.
 
 The observation schema identifies modeled sensor locations, but it does not
-yet represent physical sensor geometry, empirically calibrated noise, bias,
-lag, missingness, calibration error, electrical contact resistance, or
+yet represent physical sensor geometry, empirically calibrated noise or bias,
+lag, missingness, automated calibration, electrical contact resistance, or
 flowing-fluid states. Neither thermal contact resistance has yet been inferred
 from data.
 
@@ -1604,6 +1694,7 @@ thermotwin/
 ├── inverse_thermal_conductance.py
 ├── virtual_test_stand.py
 ├── measurement_noise.py
+├── measurement_bias.py
 ├── requirements-pinn.txt
 ├── README.md
 ├── README_detailed.md
@@ -1623,7 +1714,8 @@ tests/
 ├── test_forward_pinn_report.py
 ├── test_inverse_thermal_conductance.py
 ├── test_virtual_test_stand.py
-└── test_measurement_noise.py
+├── test_measurement_noise.py
+└── test_measurement_bias.py
 ```
 
 The core public API is re-exported from `thermotwin/__init__.py`. Optional
@@ -1639,8 +1731,8 @@ The planned learning and implementation sequence is:
 1. Keep both conventional topologies, reports, and the learned baseline
    reproducible.
 2. Preserve the ideal virtual test-stand dataset as a reproducible baseline.
-3. Preserve the configurable downsampling and Gaussian-noise baselines, then
-   add bias, lag, and missing observations one mechanism at a time.
+3. Preserve the configurable downsampling, Gaussian-noise, and fixed-bias
+   baselines, then add lag and missing observations one mechanism at a time.
 4. Split datasets by operating regime rather than by random time samples.
 5. Infer one contact resistance while holding $K$ and the other interface
    parameters fixed.

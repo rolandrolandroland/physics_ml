@@ -21,10 +21,13 @@ The relevant files are:
 - `thermotwin/virtual_test_stand.py`: sensor definitions, sampling,
   interpolation, and the ideal reference dataset;
 - `thermotwin/measurement_noise.py`: reproducible Gaussian temperature noise;
+- `thermotwin/measurement_bias.py`: fixed per-sensor temperature offsets;
 - `tests/test_virtual_test_stand.py`: schema, timing, interpolation, current,
   and validation checks;
 - `tests/test_measurement_noise.py`: determinism, zero-noise, per-sensor, and
-  sample-statistics checks; and
+  sample-statistics checks;
+- `tests/test_measurement_bias.py`: zero-bias, persistence, isolation, and
+  composition checks; and
 - `thermotwin/README_detailed.md`: the full package-level explanation.
 
 Make predictions before running code. Include units in calculations. Preserve
@@ -644,7 +647,105 @@ validation but would not be possible with unknown hardware truth.
 
 ### Checkpoint 5
 
-Ask Codex to review Exercises 35–40 before implementing bias or lag.
+Ask Codex to review Exercises 35–40 before analyzing fixed bias or implementing
+lag.
+
+---
+
+## Block 10 — Trace the implemented fixed-bias layer
+
+### Exercise 41: Distinguish bias from random noise
+
+Compare these observation equations:
+
+$$
+T_{\mathrm{noisy}}=T_{\mathrm{ideal}}+\epsilon,
+\qquad \epsilon\sim\mathcal N(0,\sigma^2),
+$$
+
+$$
+T_{\mathrm{biased},s}=T_{\mathrm{ideal},s}+b_s.
+$$
+
+1. Which error changes from reading to reading?
+2. Which remains constant for one sensor?
+3. Which tends to average toward zero under the implemented assumptions?
+4. Which could be confused with a persistent model discrepancy?
+
+**My comparison:**
+
+### Exercise 42: Predict the frozen bias-only dataset
+
+The generic baseline assigns +0.10 K to `cold_face_sensor` and 0 K to all
+other sensors.
+
+Before running it, predict:
+
+1. the number of times and records;
+2. every initial sensor reading;
+3. which final reading differs from ideal;
+4. the mean cold-face error over 61 readings; and
+5. whether current or time changes.
+
+**My predictions and results:**
+
+### Exercise 43: Trace configuration and validation
+
+Read `FixedTemperatureBias` and `apply_fixed_temperature_bias`.
+
+1. Why may a valid bias be positive, negative, or zero?
+2. Why must it be finite?
+3. Why must override names be unique and known to the dataset?
+4. Which observation field is replaced?
+5. Which fields remain exact?
+
+**My code trace:**
+
+### Exercise 44: Verify the zero-bias limiting case
+
+Apply a default bias of 0 K with no overrides to both an ideal dataset and a
+noisy dataset.
+
+1. Predict both outputs.
+2. Why should equality hold exactly rather than statistically?
+3. Which automated test checks the ideal case?
+4. What additional test would check the noisy-input case?
+
+**My prediction:**
+
+### Exercise 45: Explain composition with noise
+
+For additive independent noise and fixed bias, compare
+
+~~~text
+ideal -> noise -> bias
+ideal -> bias -> noise
+~~~
+
+1. Derive the final temperature expression for each order.
+2. Why should they agree mathematically?
+3. Why might floating-point results differ in their last bits?
+4. Why will sensor lag generally make transformation order important?
+5. Why does the combined result retain both configurations?
+
+**My derivation and explanation:**
+
+### Exercise 46: Design a calibration check
+
+Propose a controlled condition with a known uniform temperature that could
+help estimate sensor offsets.
+
+1. What reference instrument or condition is required?
+2. How many repeated measurements would you take?
+3. How would you separate random scatter from fixed offset?
+4. What could make the apparent bias temperature-dependent?
+5. Why is the current +0.10 K value not a calibration result?
+
+**My design:**
+
+### Checkpoint 6
+
+Ask Codex to review Exercises 41–46 before implementing sensor lag.
 
 ---
 

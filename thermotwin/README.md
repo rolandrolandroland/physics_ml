@@ -153,8 +153,39 @@ print(result.dataset.observations[:4])
 ~~~
 
 The same seed reproduces the same readings. Different seeds create different
-synthetic trials. Bias, lag, missing data, and current-measurement error are
-not yet included.
+synthetic trials. Fixed bias is available as a separate transformation below;
+the noise-only workflow does not add it. Lag, missing data, and
+current-measurement error are not yet included.
+
+## Fixed temperature bias
+
+The [measurement_bias.py](measurement_bias.py) module adds constant
+per-sensor temperature offsets without modifying its input dataset. The
+generic bias-only baseline applies +0.10 K to `cold_face_sensor` and 0 K to the
+other three sensors. This is a controlled learning case, not a calibrated
+instrument offset.
+
+~~~python
+from thermotwin import run_biased_contact_reference_test_stand
+
+result = run_biased_contact_reference_test_stand()
+print(result.bias_model)
+print(result.dataset.observations_for("cold_face_sensor")[:3])
+~~~
+
+Zero bias exactly reproduces the input dataset. A combined helper applies the
+frozen Gaussian noise and bias baselines while retaining both configurations:
+
+~~~python
+from thermotwin import run_noisy_biased_contact_reference_test_stand
+
+result = run_noisy_biased_contact_reference_test_stand()
+print(result.noise_model)
+print(result.bias_model)
+~~~
+
+Unlike zero-mean random noise, a fixed sensor bias does not diminish when many
+readings are averaged.
 
 ## First forward PINN
 
