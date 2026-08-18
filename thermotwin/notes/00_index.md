@@ -16,6 +16,7 @@ choice. They are intentionally separate from the package README.
 | [06 — Time integrator](06_time_integrator.md) | Understand transient physics, RK4, trajectory code, and numerical checks | Not started |
 | [07 — Time-varying current](07_time_varying_current.md) | Understand current schedules, switching physics, discontinuities, and pulse tests | Not started |
 | [08 — Forward PINN](08_forward_pinn.md) | Understand the forward PINN physics, code, training loss, and RK4 validation | Not started |
+| [09 — Inverse thermal conductance](09_inverse_thermal_conductance.md) | Understand sparse observations, trainable $K$, inverse losses, identifiability, and validation | Not started |
 
 Suggested statuses are `Not started`, `Draft`, `Revising`, and `Reviewed`.
 

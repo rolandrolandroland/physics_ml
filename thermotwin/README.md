@@ -1,5 +1,9 @@
 # ThermoTwin physics kernel
 
+For a step-by-step explanation of the physics, code paths, conventional solver,
+forward PINN, inverse parameter inference, tests, and current limitations, see
+[`README_detailed.md`](README_detailed.md).
+
 This package is isolated from `pinn_heat`. Its first milestone implements the
 constant-property, quasi-steady thermoelectric relations
 
@@ -87,6 +91,33 @@ python3 -m thermotwin.forward_pinn_report \
 ```
 
 The core solver remains independent of PyTorch and `pinn_heat`.
+
+## First inverse parameter problem
+
+The optional `thermotwin.inverse_thermal_conductance` module treats the module
+thermal conductance $K$ as one positive trainable parameter. The baseline uses
+noise-free synthetic $T_c$ and $T_h$ observations every 5 s from the 60 s
+reference experiment. All other physical parameters and inputs remain fixed
+at their known values.
+
+The temperature network and $K$ are trained jointly. The loss combines the two
+ODE residuals at dense collocation points with errors at the 13 sparse
+temperature snapshots. A softplus transform keeps the inferred conductance
+positive. Dense RK4 temperatures remain separate validation data.
+
+Run the baseline with:
+
+```bash
+python3 -m thermotwin.inverse_thermal_conductance
+```
+
+This noise-free, single-parameter recovery is a controlled identifiability
+baseline. It does not yet establish robustness to measurement noise, sparse
+sensors, simultaneous unknown parameters, model mismatch, or hardware data.
+
+Exercises for deriving, tracing, testing, and interpreting this inverse problem
+are in
+[`notes/09_inverse_thermal_conductance.md`](notes/09_inverse_thermal_conductance.md).
 
 ## Learning notes
 

@@ -1,0 +1,1208 @@
+# ThermoTwin: detailed physics and implementation guide
+
+This document is the tutorial-style companion to the concise
+[`README.md`](README.md). It explains what the package currently does, the
+physical meaning of its equations, how the conventional and learned models are
+connected, and how to run and validate each stage.
+
+ThermoTwin is being developed as a physics-informed digital twin and experiment
+planner for a modular thermoelectric heat pump. The current package is the
+foundation of that larger goal. It contains:
+
+1. A constant-property thermoelectric model.
+2. A two-node transient thermal model.
+3. Constant, step, and pulse current inputs.
+4. A dependency-free RK4 reference solver.
+5. Derived heat, voltage, power, and COP histories.
+6. A reproducible 1 A reference experiment.
+7. A forward physics-informed neural network, or PINN.
+8. An RK4-versus-PINN comparison report.
+9. A first inverse PINN that infers the module thermal conductance $K$ from
+   sparse synthetic temperature observations.
+10. Unit, sign, energy, numerical, PINN, and identifiability tests.
+
+The package does **not** yet represent a hardware-validated digital twin. Its
+learned models are currently validated against the conventional equations that
+generated their synthetic reference data.
+
+---
+
+## 1. How to use this documentation
+
+There are three documentation layers:
+
+- [`README.md`](README.md) is the concise package reference.
+- `README_detailed.md`, this file, is the step-by-step technical walkthrough.
+- [`notes/00_index.md`](notes/00_index.md) links to learning exercises,
+  user-authored explanations, predictions, corrections, and derivations.
+
+The concise and detailed READMEs describe the current implemented behavior.
+The notes preserve the learning process and may contain unfinished answers.
+
+---
+
+## 2. Quick start
+
+Run commands from the repository root, the directory that contains both
+`thermotwin/` and `tests/`.
+
+### 2.1 Run the conventional model tests
+
+The conventional thermoelectric model and RK4 solver use only the Python
+standard library. Run all current ThermoTwin tests with:
+
+```bash
+python3 -m unittest discover -s tests
+```
+
+The current suite contains 49 focused tests. The PINN-related tests are skipped
+when their optional dependencies are not installed.
+
+### 2.2 Install the optional learned-model dependencies
+
+The forward PINN, inverse PINN, and comparison report require PyTorch. The
+report also requires Matplotlib:
+
+```bash
+python3 -m pip install -r thermotwin/requirements-pinn.txt
+```
+
+### 2.3 Run the main workflows
+
+Train and validate the forward PINN:
+
+```bash
+python3 -m thermotwin.forward_pinn
+```
+
+Generate the four-panel forward comparison report:
+
+```bash
+python3 -m thermotwin.forward_pinn_report \
+  --output forward_pinn_comparison.png
+```
+
+Run the first inverse problem and infer $K$:
+
+```bash
+python3 -m thermotwin.inverse_thermal_conductance
+```
+
+Generated PNG reports are outputs rather than source code. Avoid staging them
+unless there is a deliberate reason to version a particular result.
+
+---
+
+## 3. The physical picture
+
+The model treats the heat pump and its surroundings as two lumped thermal
+nodes connected by one thermoelectric module:
+
+```text
+cold reservoir                                  hot reservoir
+ T_c,∞                                              T_h,∞
+   │                                                   │
+   │ G_c                                               │ G_h
+   ▼                                                   ▼
+[cold node at T_c] ⇄ [thermoelectric module] ⇄ [hot node at T_h]
+        ▲                                             ▲
+        │ q̇_c,ext                                    │ q̇_h,ext
+```
+
+The cold and hot nodes store thermal energy. The thermoelectric module is
+treated as quasi-steady: it transports and generates heat, but it does not
+store energy internally. Reservoirs exchange heat with their corresponding
+nodes through effective conductances $G_c$ and $G_h$.
+
+The word **external** means external to the modeled thermoelectric module and
+two-node heat-transfer paths. For example, an electronic component heating the
+cold node can be represented by $\dot q_{c,\mathrm{ext}}>0$.
+
+---
+
+## 4. Symbols, meanings, and units
+
+| Symbol | Code name | Meaning | Units |
+| --- | --- | --- | --- |
+| $T_c$ | `cold_temperature` | Cold-node/module-face temperature | K |
+| $T_h$ | `hot_temperature` | Hot-node/module-face temperature | K |
+| $T_{c,\infty}$ | `cold_reservoir_temperature` | Cold reservoir temperature | K |
+| $T_{h,\infty}$ | `hot_reservoir_temperature` | Hot reservoir temperature | K |
+| $I$ | `current` | Signed module current | A |
+| $\alpha$ | `seebeck_coefficient` | Effective Seebeck coefficient | V/K |
+| $R$ | `electrical_resistance` | Module electrical resistance | ohm |
+| $K$ | `thermal_conductance` | Internal parasitic thermal conductance | W/K |
+| $C_c$ | `cold_thermal_capacitance` | Cold-node thermal capacitance | J/K |
+| $C_h$ | `hot_thermal_capacitance` | Hot-node thermal capacitance | J/K |
+| $G_c$ | `cold_reservoir_conductance` | Cold node-to-reservoir conductance | W/K |
+| $G_h$ | `hot_reservoir_conductance` | Hot node-to-reservoir conductance | W/K |
+| $Q_c$ | `cold_heat` | Heat rate removed from the cold node | W |
+| $Q_h$ | `hot_heat` | Heat rate delivered to the hot node | W |
+| $V$ | `voltage` | Module terminal voltage | V |
+| $VI$ | `electrical_power` | Signed electrical power entering the module | W |
+| $\dot q_{c,\mathrm{ext}}$ | `cold_external_heat` | External heat entering cold node | W |
+| $\dot q_{h,\mathrm{ext}}$ | `hot_external_heat` | External heat entering hot node | W |
+
+Although $Q_c$ and $Q_h$ do not contain dots in the package notation, they are
+heat-transfer **rates**, measured in watts. A heat quantity would be measured
+in joules; a heat-transfer rate is measured in joules per second, or watts.
+
+$K$ is a thermal conductance in W/K, not a material thermal conductivity in
+W/(m K). A conductance already represents geometry and material effects at the
+chosen model scale.
+
+---
+
+## 5. Sign conventions
+
+The sign conventions define the interpretation of every equation:
+
+1. Positive current is the chosen refrigeration polarity when $\alpha>0$.
+2. $Q_c>0$ means the module removes heat from the cold node.
+3. $Q_h>0$ means the module delivers heat to the hot node.
+4. Positive external heat enters its node.
+5. Positive $VI$ means electrical power enters the module.
+6. $T_h-T_c>0$ means the hot face is warmer than the cold face.
+
+The model does not claim that positive current universally corresponds to one
+named physical direction of conventional charge flow for every manufactured
+module. It defines the polarity by the effective coefficient and the desired
+cooling action.
+
+---
+
+## 6. Thermoelectric heat-rate model
+
+The pure thermoelectric functions live in
+[`thermoelectric.py`](thermoelectric.py). Their parameters are grouped in the
+immutable `ThermoelectricParameters` dataclass.
+
+### 6.1 Peltier terms
+
+The Peltier heat rate at a face is
+
+$$
+\alpha I T.
+$$
+
+It is linear in current and uses absolute temperature. Kelvin must be used;
+substituting degrees Celsius would produce the wrong Peltier magnitude.
+
+The package evaluates the cold Peltier term at $T_c$ and the hot Peltier term
+at $T_h$:
+
+$$
+\dot Q_{\mathrm{Peltier},c}=\alpha I T_c,
+$$
+
+$$
+\dot Q_{\mathrm{Peltier},h}=\alpha I T_h.
+$$
+
+Reversing current reverses both Peltier terms.
+
+### 6.2 Joule heating
+
+Electrical resistance generates irreversible heat at the rate
+
+$$
+\dot Q_{\mathrm{Joule}}=I^2R.
+$$
+
+The simple model assigns half to each module face:
+
+$$
+\frac{1}{2}I^2R.
+$$
+
+Because current is squared, Joule heating does not reverse sign when current
+reverses. It grows quadratically with current.
+
+### 6.3 Parasitic thermal conduction
+
+The internal heat leak is
+
+$$
+\dot Q_{\mathrm{leak}}=K(T_h-T_c).
+$$
+
+When $T_h>T_c$ and $K>0$, passive conduction carries heat from hot to cold. It
+opposes refrigeration because it returns heat toward the cold node.
+
+The word **parasitic** means that this passive conduction works against the
+desired heat-pumping action. It does not mean the heat is lost from the
+universe; it is transferred internally from one side to the other.
+
+### 6.4 Cold- and hot-side heat rates
+
+Combining the three effects gives
+
+$$
+Q_c
+=\alpha I T_c
+-\frac{1}{2}I^2R
+-K(T_h-T_c),
+$$
+
+$$
+Q_h
+=\alpha I T_h
++\frac{1}{2}I^2R
+-K(T_h-T_c).
+$$
+
+The cold side subtracts its Joule contribution because Joule heating reduces
+the net heat the module can remove from the cold node. The hot side adds its
+Joule contribution because that heat must be rejected at the hot side.
+
+### 6.5 Voltage and electrical power
+
+The terminal voltage is
+
+$$
+V=\alpha(T_h-T_c)+IR.
+$$
+
+The first term is the Seebeck voltage and the second is the resistive voltage.
+The signed electrical power is
+
+$$
+P_{\mathrm{electrical}}=VI.
+$$
+
+### 6.6 Module energy identity
+
+Subtracting the cold heat rate from the hot heat rate gives
+
+$$
+\begin{aligned}
+Q_h-Q_c
+&=\alpha I(T_h-T_c)+I^2R \\
+&=I\left[\alpha(T_h-T_c)+IR\right] \\
+&=VI.
+\end{aligned}
+$$
+
+The module therefore rejects the heat removed from the cold side plus the
+electrical power supplied to it:
+
+$$
+Q_h=Q_c+VI.
+$$
+
+This identity is checked across positive, zero, and negative current in the
+test suite.
+
+### 6.7 Zero-current limiting case
+
+When $I=0$:
+
+$$
+Q_c=Q_h=-K(T_h-T_c).
+$$
+
+If $T_h>T_c$, both values are negative under the package sign conventions.
+Negative $Q_c$ means the module is adding heat to the cold node rather than
+removing it. Negative $Q_h$ means heat is leaving the hot node and entering the
+module. The net physical process is ordinary hot-to-cold conduction.
+
+The open-circuit voltage may still be nonzero:
+
+$$
+V=\alpha(T_h-T_c),
+$$
+
+but the electrical power is zero because $I=0$.
+
+### 6.8 Why excessive current can reduce cooling
+
+At fixed temperatures,
+
+$$
+Q_c(I)=\alpha T_c I-\frac{1}{2}RI^2-K(T_h-T_c).
+$$
+
+The useful Peltier contribution grows linearly with $I$, while the detrimental
+Joule term grows quadratically. The fixed-temperature maximum occurs at
+
+$$
+I_{Q_c,\max}=\frac{\alpha T_c}{R}.
+$$
+
+Beyond this current, increasing current reduces $Q_c$ and can eventually make
+$Q_c<0$. Cooling COP may begin declining before maximum cooling is reached.
+
+### 6.9 Coefficient of performance
+
+The cooling coefficient of performance is
+
+$$
+\mathrm{COP}=\frac{Q_c}{VI}.
+$$
+
+It is physically useful for refrigeration only when both $Q_c>0$ and $VI>0$.
+At zero electrical power the ratio is undefined. The direct
+`coefficient_of_performance` function raises `ZeroDivisionError`; trajectory
+diagnostics use `None` at those points.
+
+---
+
+## 7. Two-node transient energy balances
+
+The transient model lives in [`transient.py`](transient.py). The cold and hot
+nodes store energy according to their thermal capacitances.
+
+### 7.1 Cold node
+
+$$
+C_c\frac{dT_c}{dt}
+=G_c(T_{c,\infty}-T_c)
++\dot q_{c,\mathrm{ext}}
+-Q_c.
+$$
+
+The terms on the right are:
+
+1. Heat from the cold reservoir into the cold node.
+2. External heat directly entering the cold node.
+3. Heat removed by the thermoelectric module.
+
+Dividing the net heat rate in watts by $C_c$ in J/K produces a temperature
+rate in K/s.
+
+### 7.2 Hot node
+
+$$
+C_h\frac{dT_h}{dt}
+=G_h(T_{h,\infty}-T_h)
++\dot q_{h,\mathrm{ext}}
++Q_h.
+$$
+
+Here positive $Q_h$ enters the hot node, so it appears with a plus sign.
+
+### 7.3 Combined-node energy balance
+
+Adding the two balances and using $Q_h-Q_c=VI$ gives
+
+$$
+\begin{aligned}
+C_c\frac{dT_c}{dt}+C_h\frac{dT_h}{dt}
+={}&G_c(T_{c,\infty}-T_c)
++G_h(T_{h,\infty}-T_h) \\
+&+\dot q_{c,\mathrm{ext}}
++\dot q_{h,\mathrm{ext}}
++VI.
+\end{aligned}
+$$
+
+Internal thermoelectric heat transfer cancels from the combined balance. The
+stored energy of the two nodes changes only because of reservoir heat,
+external heat, and electrical power.
+
+### 7.4 Reservoir time-scale intuition
+
+For an isolated single-node reservoir balance,
+
+$$
+C\frac{dT}{dt}=G(T_\infty-T),
+$$
+
+the ratio $C/G$ has units of seconds. It is a useful approximate response time.
+The actual two-node thermoelectric dynamics are coupled, so $C_c/G_c$ and
+$C_h/G_h$ are guides rather than exact system time constants.
+
+---
+
+## 8. Reference numerical example
+
+The package freezes one reference experiment in
+`constant_current_reference_experiment`:
+
+| Quantity | Value |
+| --- | ---: |
+| $\alpha$ | 0.05 V/K |
+| $R$ | 2.0 ohm |
+| $K$ | 0.5 W/K |
+| $C_c$ | 100 J/K |
+| $C_h$ | 200 J/K |
+| $G_c$ | 2.0 W/K |
+| $G_h$ | 4.0 W/K |
+| Initial $T_c,T_h$ | 300 K, 300 K |
+| Reservoir $T_{c,\infty},T_{h,\infty}$ | 300 K, 300 K |
+| Current | 1 A |
+| External heat inputs | 0 W, 0 W |
+| Duration | 60 s |
+| RK4 step | 0.1 s |
+
+At the initial equal-temperature state, the conduction term is zero:
+
+$$
+Q_c=0.05(1)(300)-\frac{1}{2}(1)^2(2)=14\ \mathrm{W},
+$$
+
+$$
+Q_h=0.05(1)(300)+\frac{1}{2}(1)^2(2)=16\ \mathrm{W}.
+$$
+
+The reservoir terms are initially zero, so
+
+$$
+\frac{dT_c}{dt}=-\frac{14}{100}=-0.14\ \mathrm{K/s},
+$$
+
+$$
+\frac{dT_h}{dt}=\frac{16}{200}=0.08\ \mathrm{K/s}.
+$$
+
+The initial voltage is 2 V and the input power is 2 W. The identity
+$Q_h-Q_c=VI$ gives $16-14=2$ W.
+
+The current RK4 implementation gives the following values after 60 s:
+
+| Quantity | Value |
+| --- | ---: |
+| $T_c$ | 295.971976 K |
+| $T_h$ | 302.404041 K |
+| $T_h-T_c$ | 6.432065 K |
+| $Q_c$ | 10.582566 W |
+| $Q_h$ | 12.904170 W |
+| $V$ | 2.321603 V |
+| $VI$ | 2.321603 W |
+| Cooling COP | 4.558301 |
+
+The independent constant-input steady-state solver gives approximately
+$T_c=295.107006$ K and $T_h=303.045731$ K. The 60 s trajectory is therefore
+approaching, but has not completely reached, steady state.
+
+These are model predictions, not measurements.
+
+---
+
+## 9. Code walkthrough: conventional model
+
+### 9.1 `thermoelectric.py`: pure algebra
+
+`ThermoelectricParameters` stores $\alpha$, $R$, and $K$. The module then
+provides small pure functions:
+
+- `peltier_heat`
+- `joule_heating`
+- `conductive_heat_leak`
+- `cold_side_heat`
+- `hot_side_heat`
+- `voltage`
+- `electrical_power`
+- `coefficient_of_performance`
+
+These functions do not advance time or modify state. Given the same inputs,
+they return the same scalar outputs.
+
+### 9.2 `controls.py`: current schedules
+
+`PiecewiseConstantCurrent` represents a right-continuous schedule. If
+
+```python
+transition_times = (10.0, 30.0)
+values = (0.0, 1.0, 0.0)
+```
+
+then current is 0 A before 10 s, 1 A from 10 s through the interval before
+30 s, and 0 A from 30 s onward. Right-continuous means the new value applies
+at the transition time itself.
+
+Convenience constructors create:
+
+- a constant input with `PiecewiseConstantCurrent.constant`;
+- one step with `PiecewiseConstantCurrent.step`; and
+- one rectangular pulse with `PiecewiseConstantCurrent.pulse`.
+
+The class validates schedule lengths, finite values, nonnegative transition
+times, and strictly increasing transitions.
+
+### 9.3 `two_node_rhs`: instantaneous temperature rates
+
+`two_node_rhs` performs the following sequence:
+
+1. Evaluate $Q_c$ and $Q_h$ at the current temperatures and current.
+2. Evaluate cold and hot reservoir heat transfer.
+3. Add external heat inputs.
+4. Construct the net heat rate for each node.
+5. Divide by the corresponding thermal capacitance.
+6. Return `TemperatureRates(cold, hot)` in K/s.
+
+One RHS call does not advance time. It answers: “If the state is currently
+this, what are the instantaneous temperature slopes?”
+
+### 9.4 `integrate_two_node`: RK4 trajectory
+
+`integrate_two_node` repeatedly calls the RHS with the classical fourth-order
+Runge--Kutta method. For a coupled state $y=[T_c,T_h]$ and RHS $f(y)$:
+
+$$
+k_1=f(y_n),
+$$
+
+$$
+k_2=f\left(y_n+\frac{\Delta t}{2}k_1\right),
+$$
+
+$$
+k_3=f\left(y_n+\frac{\Delta t}{2}k_2\right),
+$$
+
+$$
+k_4=f(y_n+\Delta t\,k_3),
+$$
+
+$$
+y_{n+1}
+=y_n+\frac{\Delta t}{6}(k_1+2k_2+2k_3+k_4).
+$$
+
+Each $k$ contains both cold and hot temperature rates. Both temperatures must
+be advanced together because each face heat rate depends on both $T_c$ and
+$T_h$.
+
+The returned `TemperatureTrajectory` contains aligned immutable tuples:
+
+```text
+time = (t_0, t_1, ..., t_N)
+cold = (T_c(t_0), T_c(t_1), ..., T_c(t_N))
+hot  = (T_h(t_0), T_h(t_1), ..., T_h(t_N))
+```
+
+The initial and exact requested final times are always included. A final
+partial step is used when duration is not an integer multiple of the requested
+step.
+
+### 9.5 RK4 at current switches
+
+An RK4 interval never crosses a known piecewise-constant current transition.
+The integrator shortens the preceding step so it ends exactly at the switch,
+then begins a new step using the new current.
+
+Within one RK4 interval, $k_1$ through $k_4$ use one held current value. This
+avoids unintentionally averaging a discontinuous control across a step.
+
+Temperatures remain continuous at a finite current switch because a finite
+thermal capacitance cannot acquire finite energy instantaneously. Current,
+$Q_c$, $Q_h$, voltage, power, COP, and temperature derivatives may jump.
+
+### 9.6 `two_node_steady_state`: algebraic cross-check
+
+For constant inputs, setting both temperature rates to zero produces a
+two-by-two linear system for $T_c$ and $T_h$. `two_node_steady_state` solves
+that system independently of RK4.
+
+Thermal capacitances do not appear because steady state has no stored-energy
+rate. A singular or numerically ill-conditioned system raises `ValueError`.
+
+Comparing a long RK4 run with the algebraic result helps distinguish a correct
+equilibrium from a time-stepping result that merely appears stable.
+
+### 9.7 `diagnostics.py`: derived histories
+
+`evaluate_trajectory` post-processes every temperature sample into aligned
+histories of:
+
+- current;
+- $T_h-T_c$;
+- $Q_c$;
+- $Q_h$;
+- terminal voltage;
+- electrical power; and
+- cooling COP.
+
+Diagnostics use the right-continuous current at a switch. COP is `None` when
+electrical power is zero.
+
+### 9.8 `experiments.py`: reproducible input bundles
+
+`TwoNodeExperiment` stores everything required to reproduce one run:
+
+- thermoelectric parameters;
+- node thermal parameters;
+- initial temperatures;
+- duration and time step;
+- current input;
+- reservoir temperatures; and
+- external heat inputs.
+
+`run_two_node_experiment` runs RK4 and then evaluates diagnostics, returning
+both in `ExperimentResult`.
+
+Keeping all inputs together prevents learned and conventional comparisons from
+silently using different parameter values.
+
+### 9.9 Minimal conventional API example
+
+```python
+from thermotwin import (
+    constant_current_reference_experiment,
+    run_two_node_experiment,
+)
+
+experiment = constant_current_reference_experiment()
+result = run_two_node_experiment(experiment)
+
+print(result.trajectory.cold[-1])
+print(result.trajectory.hot[-1])
+print(result.diagnostics.cooling_cop[-1])
+```
+
+### 9.10 Custom pulse example
+
+```python
+from dataclasses import replace
+
+from thermotwin import (
+    PiecewiseConstantCurrent,
+    constant_current_reference_experiment,
+    run_two_node_experiment,
+)
+
+base = constant_current_reference_experiment()
+pulse = PiecewiseConstantCurrent.pulse(
+    start_time=10.0,
+    end_time=30.0,
+    pulse_current=1.0,
+    baseline_current=0.0,
+)
+experiment = replace(base, current=pulse)
+result = run_two_node_experiment(experiment)
+```
+
+---
+
+## 10. Forward physics-informed neural network
+
+The forward PINN lives in [`forward_pinn.py`](forward_pinn.py). It solves the
+same two-node initial-value problem as RK4, but represents the complete
+temperature trajectory with a neural network.
+
+### 10.1 Inputs, outputs, and fixed quantities
+
+The network input is time $t$. Its two outputs are $T_c(t)$ and $T_h(t)$.
+
+The first forward problem does not learn $\alpha$, $R$, $K$, $C_c$, $C_h$,
+$G_c$, or $G_h$. All physical parameters and experimental inputs are fixed.
+This is why it is a forward problem rather than an inverse problem.
+
+### 10.2 Architecture
+
+The default architecture is:
+
+```text
+time → 32 tanh units → 32 tanh units → 2 raw outputs
+```
+
+Tanh is smooth, which is important because the physics loss requires time
+derivatives of the outputs.
+
+### 10.3 Time normalization
+
+Raw time from 0 to $t_{\mathrm{end}}$ is mapped to approximately $[-1,1]$:
+
+$$
+\tau=2\frac{t}{t_{\mathrm{end}}}-1.
+$$
+
+The network receives $\tau$, while automatic differentiation applies the chain
+rule to calculate derivatives with respect to physical time $t$.
+
+### 10.4 Exact initial conditions
+
+The raw network outputs $N_c(t)$ and $N_h(t)$ are transformed as
+
+$$
+T(t)=T(0)
++\frac{t}{t_{\mathrm{end}}}
+T_{\mathrm{scale}}N(t).
+$$
+
+At $t=0$, the learned contribution is exactly zero for any network weights.
+Both initial temperatures are therefore enforced exactly instead of being
+encouraged through a soft initial-condition penalty.
+
+The transformation does not force the initial slope to zero. Differentiating
+it produces both a raw-output term and a raw-output-derivative term.
+
+`temperature_scale` is a numerical output scale, not a new physical property.
+
+### 10.5 Automatic differentiation and residuals
+
+PyTorch automatic differentiation computes the network derivatives
+$dT_c/dt$ and $dT_h/dt$. The residuals are
+
+$$
+r_c
+=\left(\frac{dT_c}{dt}\right)_{\mathrm{network}}
+-\frac{G_c(T_{c,\infty}-T_c)
++\dot q_{c,\mathrm{ext}}-Q_c}{C_c},
+$$
+
+$$
+r_h
+=\left(\frac{dT_h}{dt}\right)_{\mathrm{network}}
+-\frac{G_h(T_{h,\infty}-T_h)
++\dot q_{h,\mathrm{ext}}+Q_h}{C_h}.
+$$
+
+Both residuals have units of K/s. A physically consistent solution makes them
+zero throughout the time domain.
+
+### 10.6 Collocation points and loss
+
+The default model evaluates the residuals at 128 uniformly spaced collocation
+points. These are time coordinates, not labeled temperature observations.
+
+The forward loss is
+
+$$
+\mathcal L_{\mathrm{forward}}
+=\operatorname{mean}(r_c^2)
++\operatorname{mean}(r_h^2).
+$$
+
+RK4 temperatures are not used in training. This separation makes RK4 a genuine
+post-training numerical comparison rather than hidden supervision.
+
+### 10.7 Default forward configuration
+
+| Setting | Default |
+| --- | ---: |
+| Hidden layers | 2 |
+| Hidden width | 32 |
+| Collocation points | 128 |
+| Epochs | 2,000 |
+| Adam learning rate | $10^{-3}$ |
+| Temperature scale | 10 K |
+| Random seed | 7 |
+| Device | CPU |
+
+`device="mps"` requests Apple Metal acceleration and raises an error when MPS
+is unavailable. `device="auto"` chooses MPS when available and otherwise uses
+CPU. CPU is the default because this first model is small.
+
+### 10.8 Forward validation results
+
+For the reference problem, the current default CPU run gives approximately:
+
+| Metric | Value |
+| --- | ---: |
+| Final physics loss | $6.55\times10^{-7}$ K$^2$/s$^2$ |
+| Cold RMSE versus RK4 | 0.002747 K |
+| Hot RMSE versus RK4 | 0.001683 K |
+| Cold maximum absolute error | 0.004788 K |
+| Hot maximum absolute error | 0.002847 K |
+
+Results can vary slightly across PyTorch versions and hardware even with a
+fixed seed.
+
+### 10.9 Comparison report
+
+[`forward_pinn_report.py`](forward_pinn_report.py) creates four panels:
+
+1. RK4 and PINN temperature trajectories.
+2. Pointwise PINN-minus-RK4 temperature errors.
+3. Cold and hot physics residuals across time.
+4. Training loss versus epoch on a logarithmic scale.
+
+RMSE alone can hide localized errors. The error and residual panels show where
+the approximation is weakest, including behavior near interval endpoints.
+
+### 10.10 Current forward-PINN restriction
+
+The first forward PINN accepts constant current only. The conventional RK4
+solver already supports steps and pulses, but a rectangular switch causes a
+temperature-derivative discontinuity. A single smooth neural network may have
+difficulty representing that discontinuity precisely.
+
+Future options include splitting the time domain at switches or explicitly
+handling transition points in a time-dependent-control PINN.
+
+---
+
+## 11. First inverse problem: learning $K$
+
+The inverse implementation lives in
+[`inverse_thermal_conductance.py`](inverse_thermal_conductance.py).
+The companion learning exercises are in
+[`notes/09_inverse_thermal_conductance.md`](notes/09_inverse_thermal_conductance.md).
+
+### 11.1 Forward versus inverse
+
+In the forward PINN, every physical parameter is known and the network learns
+only the temperature functions.
+
+In the first inverse PINN, the temperature functions and one physical
+parameter, $K$, are learned jointly from:
+
+1. The two energy-balance residuals.
+2. Sparse temperature observations.
+
+All other parameters are treated as exactly known.
+
+### 11.2 Synthetic observations
+
+The current baseline uses the RK4 reference trajectory as synthetic truth.
+Temperatures are sampled every 5 s:
+
+```text
+0, 5, 10, ..., 55, 60 s
+```
+
+This produces 13 paired observations of $T_c$ and $T_h$. They contain no noise.
+The dense 0.1 s RK4 trajectory remains reserved for final validation.
+
+### 11.3 Why $K$ can affect the data
+
+$K$ appears through
+
+$$
+K(T_h-T_c).
+$$
+
+When $T_h-T_c$ grows, larger $K$ produces a stronger passive hot-to-cold heat
+leak. The temperature separation therefore carries information about $K$.
+
+At the initial equal-temperature state, this term is zero. The experiment must
+develop a nonzero temperature difference before it becomes informative about
+$K$.
+
+### 11.4 Positive parameterization
+
+The optimizer updates an unconstrained raw scalar $k_{\mathrm{raw}}$. The
+physical conductance is
+
+$$
+K=\operatorname{softplus}(k_{\mathrm{raw}})
+=\log\left(1+e^{k_{\mathrm{raw}}}\right).
+$$
+
+This transformation keeps $K$ positive while allowing ordinary gradient-based
+optimization. The default physical initial guess is 0.2 W/K; the synthetic
+truth is 0.5 W/K.
+
+### 11.5 Inverse losses and scaling
+
+The residual component is normalized by 0.1 K/s:
+
+$$
+\mathcal L_{\mathrm{physics}}
+=\operatorname{mean}\left[\left(\frac{r_c}{0.1\ \mathrm{K/s}}\right)^2\right]
++\operatorname{mean}\left[\left(\frac{r_h}{0.1\ \mathrm{K/s}}\right)^2\right].
+$$
+
+The observation component is normalized by 1 K:
+
+$$
+\mathcal L_{\mathrm{obs}}
+=\operatorname{mean}\left[
+\left(\frac{T_{\mathrm{network}}-T_{\mathrm{observed}}}{1\ \mathrm{K}}\right)^2
+\right].
+$$
+
+The baseline total loss is
+
+$$
+\mathcal L_{\mathrm{inverse}}
+=\mathcal L_{\mathrm{physics}}+\mathcal L_{\mathrm{obs}}.
+$$
+
+The scales make the components dimensionless and keep their numerical
+magnitudes comparable. They are numerical choices rather than additional
+physical laws.
+
+### 11.6 Joint optimization
+
+Adam updates two parameter groups:
+
+- neural-network weights at learning rate $10^{-3}$; and
+- the raw conductance parameter at learning rate $5\times10^{-3}$.
+
+At every epoch:
+
+1. Predict temperatures at dense collocation times.
+2. Calculate both ODE residuals using the current learned $K$.
+3. Predict temperatures at the 13 observation times.
+4. Calculate physics and observation losses.
+5. Backpropagate through the network, derivatives, and $K$.
+6. Update the network weights and raw conductance.
+7. Record total loss, component losses, and physical $K$.
+
+### 11.7 Default inverse configuration
+
+| Setting | Default |
+| --- | ---: |
+| Initial $K$ | 0.2 W/K |
+| True synthetic $K$ | 0.5 W/K |
+| Observation interval | 5 s |
+| Observation pairs | 13 |
+| Hidden layers | 2 |
+| Hidden width | 32 |
+| Collocation points | 128 |
+| Epochs | 4,000 |
+| Network learning rate | $10^{-3}$ |
+| Parameter learning rate | $5\times10^{-3}$ |
+| Residual scale | 0.1 K/s |
+| Observation scale | 1 K |
+| Random seed | 7 |
+| Device | CPU |
+
+### 11.8 Current inverse result
+
+The default noise-free CPU baseline gives approximately:
+
+| Metric | Value |
+| --- | ---: |
+| True $K$ | 0.500000 W/K |
+| Inferred $K$ | 0.499999 W/K |
+| Cold dense-trajectory RMSE | 0.001922 K |
+| Hot dense-trajectory RMSE | 0.001048 K |
+| Cold observation RMSE | 0.001807 K |
+| Hot observation RMSE | 0.000979 K |
+
+This is successful recovery in a controlled synthetic problem. It is not yet
+an uncertainty estimate or evidence of recovery from real sensor data.
+
+### 11.9 Identifiability limiting case
+
+Suppose $I=0$, both nodes remain at 300 K, and $T_h-T_c=0$ for all time. Then
+
+$$
+K(T_h-T_c)=0
+$$
+
+for every possible $K$. The temperatures and residuals contain no information
+about the conductance. The gradient of the physics loss with respect to $K$ is
+zero in this limiting case.
+
+The test suite checks this explicitly. A positive parameter constraint can
+prevent an unphysical negative estimate, but it cannot create information that
+is absent from the experiment.
+
+---
+
+## 12. What each test category checks
+
+The tests live in `tests/` and use Python's `unittest` framework.
+
+### 12.1 `test_thermoelectric.py`
+
+Checks:
+
+- nominal Peltier, Joule, conduction, heat-rate, and voltage values;
+- $Q_h-Q_c=VI$ for positive, zero, and negative current;
+- passive conduction at zero current;
+- Peltier sign reversal and Joule invariance under current reversal;
+- equal-temperature limiting cases;
+- excessive-current reduction of $Q_c$; and
+- COP behavior and its zero-power failure case.
+
+### 12.2 `test_controls.py`
+
+Checks:
+
+- right-continuous step behavior;
+- pulse return to baseline; and
+- invalid schedule rejection.
+
+### 12.3 `test_transient.py`
+
+Checks:
+
+- exact agreement with the two node balances;
+- total stored-energy rate;
+- equilibrium and passive-conduction signs;
+- positive-current cooling/heating directions;
+- capacitance scaling;
+- invalid parameters and time settings;
+- constant-rate and partial-step RK4 behavior;
+- energy conservation for passive insulated nodes;
+- steady-state algebraic consistency;
+- long-time convergence toward steady state;
+- scalar/scheduled constant-current equivalence; and
+- exact pulse-boundary splitting.
+
+### 12.4 `test_diagnostics.py`
+
+Checks:
+
+- initial hand calculations;
+- energy identity at every sample;
+- undefined COP at zero power;
+- scheduled-current histories; and
+- rejection of misaligned trajectory lengths.
+
+### 12.5 `test_experiments.py`
+
+Checks:
+
+- the exact frozen reference inputs;
+- initial hand calculations;
+- 60 s RK4 regression values; and
+- energy identity across the reference trajectory.
+
+### 12.6 `test_forward_pinn.py`
+
+Checks:
+
+- exact initial-temperature enforcement;
+- zero residual for the hand-calculated initial slopes;
+- zero-current equilibrium residuals;
+- rejection of switching current; and
+- short CPU training and RK4 validation.
+
+### 12.7 `test_forward_pinn_report.py`
+
+Checks:
+
+- alignment of all report histories;
+- zero initial temperature error; and
+- creation of a valid PNG report.
+
+### 12.8 `test_inverse_thermal_conductance.py`
+
+Checks:
+
+- 5 s sampling of the RK4 reference;
+- positive $K$ and exact initial temperatures;
+- expected residual changes when $K$ increases;
+- non-identifiability when $T_h-T_c$ is always zero; and
+- recovery of $K$ from sparse noise-free data.
+
+---
+
+## 13. Validation levels and what they mean
+
+ThermoTwin currently uses several different kinds of validation. They should
+not be conflated.
+
+### 13.1 Algebra and unit checks
+
+These verify that equations, signs, identities, and dimensions are internally
+consistent.
+
+### 13.2 Limiting-case checks
+
+These verify known behavior such as passive conduction, equilibrium, zero
+current, insulated energy conservation, or absent identifiability.
+
+### 13.3 Numerical solver cross-checks
+
+RK4 step refinement and algebraic steady-state comparisons test the numerical
+implementation of the conventional equations.
+
+### 13.4 Forward PINN versus RK4
+
+This verifies that the PINN approximates the conventional mathematical model.
+It does not validate the mathematical model against hardware.
+
+### 13.5 Synthetic inverse recovery
+
+This verifies that the chosen network and loss can recover one parameter when
+the data are generated from exactly the same equations. This is an important
+baseline, but it is an easier problem than real inference with noise and model
+mismatch.
+
+### 13.6 Hardware validation
+
+Hardware validation will require measured temperatures, currents, voltages,
+sensor timing and locations, calibration information, contact modeling, and a
+careful comparison between predicted and observed behavior. That stage has not
+yet been implemented.
+
+---
+
+## 14. Current physical and numerical assumptions
+
+The current results depend on these assumptions:
+
+1. $\alpha$, $R$, and $K$ are constant with temperature and current.
+2. The thermoelectric module is one lumped block.
+3. The cold and hot nodes each have one uniform temperature.
+4. The module stores no internal thermal energy.
+5. Joule heat divides equally between the two faces.
+6. Thomson heating is neglected.
+7. Radiation is not modeled explicitly.
+8. Reservoir temperatures remain constant during one run.
+9. External heat inputs remain constant during one run.
+10. The conventional current input is scalar or piecewise constant.
+11. The first forward and inverse PINNs use constant current only.
+12. The first inverse problem has one unknown parameter and noise-free paired
+    temperature observations.
+
+### 14.1 Contact resistance is not explicit
+
+The current model has no separate thermal contact-resistance states or
+parameters between the module faces, sensors, nodes, and reservoirs.
+
+- $K$ represents internal parasitic thermal conductance through the module.
+- $G_c$ and $G_h$ represent effective node-to-reservoir conductances.
+- $R$ represents module electrical resistance.
+
+Fitted effective values could absorb some unmodeled contact effects, but that
+does not make contact resistance identifiable or physically separated. Before
+using hardware data, module-face temperatures, sensor locations, interfaces,
+and contact resistances must be reconsidered explicitly.
+
+---
+
+## 15. Current package structure
+
+```text
+thermotwin/
+├── __init__.py
+├── thermoelectric.py
+├── controls.py
+├── transient.py
+├── diagnostics.py
+├── experiments.py
+├── forward_pinn.py
+├── forward_pinn_report.py
+├── inverse_thermal_conductance.py
+├── requirements-pinn.txt
+├── README.md
+├── README_detailed.md
+└── notes/
+
+tests/
+├── test_thermoelectric.py
+├── test_controls.py
+├── test_transient.py
+├── test_diagnostics.py
+├── test_experiments.py
+├── test_forward_pinn.py
+├── test_forward_pinn_report.py
+└── test_inverse_thermal_conductance.py
+```
+
+The core public API is re-exported from `thermotwin/__init__.py`. Optional
+PyTorch modules are imported directly so importing the core package does not
+require PyTorch.
+
+---
+
+## 16. Development sequence from here
+
+The planned learning and implementation sequence is:
+
+1. Keep the conventional solver and learned baseline reproducible.
+2. Vary observation spacing for $K$ inference.
+3. Add controlled synthetic measurement noise.
+4. Repeat inference across random seeds and initial guesses.
+5. Quantify parameter uncertainty and practical identifiability.
+6. Compare which experiments best identify $K$, $R$, and $\alpha$.
+7. Decide how contact resistance and sensor locations enter the physical model.
+8. Extend the learned model to time-varying current.
+9. Compare continuous and pulsed control strategies.
+10. Select the next experiment using predicted information gain or another
+    explicit experiment-selection criterion.
+11. Validate against real hardware data only after measurement definitions and
+    model interfaces are agreed.
+
+Both READMEs should be updated as each milestone changes package behavior. The
+concise README should remain quick to scan; this detailed README should explain
+the physics, implementation, validation, limitations, and workflow thoroughly.

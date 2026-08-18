@@ -7,7 +7,7 @@ dependency.
 
 from dataclasses import dataclass
 import math
-from typing import NamedTuple, Sequence, Tuple
+from typing import NamedTuple, Optional, Sequence, Tuple
 
 import torch
 from torch import Tensor, nn
@@ -179,11 +179,15 @@ def physics_residuals(
     model: nn.Module,
     time: Tensor,
     experiment: TwoNodeExperiment,
+    *,
+    thermal_conductance: Optional[Tensor] = None,
 ) -> PINNResiduals:
     """Evaluate both agreed two-node ODE residuals at collocation times.
 
     Each residual is ``predicted temperature rate - physical RHS``. A perfect
-    forward solution therefore makes both returned tensors zero.
+    forward solution therefore makes both returned tensors zero. An optional
+    differentiable thermal conductance replaces the fixed experiment value for
+    inverse parameter inference.
     """
 
     if time.ndim == 1:
@@ -215,6 +219,11 @@ def physics_residuals(
     thermoelectric = experiment.thermoelectric_parameters
     thermal = experiment.thermal_parameters
     current = _constant_current(experiment)
+    effective_thermal_conductance = (
+        thermoelectric.thermal_conductance
+        if thermal_conductance is None
+        else thermal_conductance
+    )
     temperature_difference = hot_temperature - cold_temperature
     half_joule_heat = (
         0.5 * current**2 * thermoelectric.electrical_resistance
@@ -222,12 +231,12 @@ def physics_residuals(
     cold_heat = (
         thermoelectric.seebeck_coefficient * current * cold_temperature
         - half_joule_heat
-        - thermoelectric.thermal_conductance * temperature_difference
+        - effective_thermal_conductance * temperature_difference
     )
     hot_heat = (
         thermoelectric.seebeck_coefficient * current * hot_temperature
         + half_joule_heat
-        - thermoelectric.thermal_conductance * temperature_difference
+        - effective_thermal_conductance * temperature_difference
     )
 
     cold_rhs = (
