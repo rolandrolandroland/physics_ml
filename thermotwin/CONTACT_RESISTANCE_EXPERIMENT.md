@@ -541,6 +541,17 @@ Within the frozen mathematical model:
 7. Under the isolated 0.05 K Gaussian-noise model, the 100-trial estimates
    remain centered near the hidden truth with a 0.00412 K/W sample standard
    deviation and no search-bound hits.
+8. Fixed face and exchanger biases create different systematic parameter
+   shifts, and common-mode bias does not cancel from an absolute-temperature
+   loss.
+9. Sensor lag can be partly misattributed to contact resistance but leaves
+   dynamic residuals on held-out regimes.
+10. Switch-adjacent readings carry more local resistance information than the
+    same number of equilibrium readings.
+11. Cold-side sensors dominate sensitivity to the cold contact in the frozen
+    experiment; the hot pair contributes very little additional curvature.
+12. Under combined imperfections, systematic bias can greatly exceed random
+    trial spread.
 
 ---
 
@@ -551,8 +562,10 @@ This experiment does not establish:
 - the cold contact resistance of physical hardware;
 - the correctness of the four-node lumped model;
 - the accuracy of any fixed thermal parameter;
-- robustness to fixed bias, sensor lag, missing readings, correlated noise, or
-  a noise level other than the one frozen synthetic case;
+- robustness to bias, lag, missingness, or noise structures and magnitudes
+  beyond the frozen synthetic cases;
+- the realism of the selected bias, lag, noise, outage, or sensor-availability
+  assumptions for physical instruments;
 - identifiability when multiple parameters vary together;
 - formal uncertainty bounds on the inferred resistance;
 - correctness under temperature-dependent material properties;
@@ -560,8 +573,8 @@ This experiment does not establish:
   constant lumped resistance; or
 - safety of any current schedule on a real device.
 
-The tiny reported errors should never be presented as physical measurement
-accuracy.
+None of the reported synthetic errors or empirical intervals should be
+presented as physical measurement accuracy.
 
 ---
 
@@ -759,20 +772,326 @@ behaves when systematic and physical uncertainties interact.
 
 ---
 
-## 20. Planned progression
+## 20. Fixed sensor bias
+
+### 20.1 Physical question
+
+A fixed bias adds the same temperature offset to every reading from one
+sensor:
+
+$$
+T_s^{observed}(t)=T_s^{ideal}(t)+b_s.
+$$
+
+The error is systematic. Repeating the experiment or averaging more points
+does not force it toward zero. The estimator does not know $b_s$ and can change
+only $R_{contact,c}$, so part of the calibration error may be misattributed to
+the contact.
+
+### 20.2 Frozen cases
+
+The implementation in `contact_resistance_bias_study.py` uses:
+
+| Case | Cold-face bias | Cold-exchanger bias |
+| --- | ---: | ---: |
+| Zero limit | 0 K | 0 K |
+| Face only | +0.10 K | 0 K |
+| Exchanger only | 0 K | +0.10 K |
+| Common mode | +0.10 K | +0.10 K |
+| Differential | +0.05 K | -0.05 K |
+
+Every bias pattern is applied independently to the complete train,
+validation, and test regimes after sampling. The cold pair remains the fitting
+pair, and all physical parameters remain exact.
+
+### 20.3 Results
+
+| Case | Inferred resistance | Test truth RMSE |
+| --- | ---: | ---: |
+| Zero limit | 0.249999776 K/W | approximately 0 K |
+| Face only | 0.208885282 K/W | 0.063227 K |
+| Exchanger only | 0.272817055 K/W | 0.032146 K |
+| Common mode | 0.228450366 K/W | 0.032262 K |
+| Differential | 0.218889695 K/W | 0.047190 K |
+
+The face-only and exchanger-only cases shift the inferred parameter in
+opposite directions. The common-mode result is especially important: equal
+offsets preserve the measured contact temperature difference, but they shift
+both absolute temperature histories relative to the reservoirs. Because the
+loss fits absolute temperatures, common-mode error does not cancel.
+
+~~~bash
+python3 -m thermotwin.contact_resistance_bias_study
+python3 -m unittest tests.test_contact_resistance_bias_study
+~~~
+
+The zero-bias case is the required ideal limiting case. This study does not
+claim that a physical sensor has a constant +0.10 K offset; that value is a
+controlled sensitivity input.
+
+---
+
+## 21. Sensor lag and confusion with contact dynamics
+
+### 21.1 Sensor equation and ordering
+
+The first-order sensor state follows the discrete exact constant-target
+update
+
+$$
+T_{s,k}^{lag}=a_kT_{s,k-1}^{lag}+(1-a_k)T_{s,k}^{ideal},
+$$
+
+$$
+a_k=\exp\left(-\frac{\Delta t_k}{\tau_s}\right).
+$$
+
+`contact_resistance_lag_study.py` simulates ideal observations every 0.1 s,
+evolves this sensor state, and only then downsamples to the 1 s measurement
+interval. Filtering only the already sparse readings would define a different
+sensor model and make the result depend incorrectly on reporting frequency.
+
+### 21.2 Frozen cases and results
+
+| Lag case | Inferred resistance | Training observation RMSE | Test observation RMSE |
+| --- | ---: | ---: | ---: |
+| Zero lag | 0.249999776 K/W | approximately 0 K | approximately 0 K |
+| Face 2 s | 0.246880379 K/W | 0.121744 K | 0.194466 K |
+| Exchanger 2 s | 0.270766427 K/W | 0.048474 K | 0.077482 K |
+| Both 2 s | 0.270846727 K/W | 0.131330 K | 0.210732 K |
+| Face 2 s, exchanger 0.5 s | 0.252142030 K/W | 0.122447 K | 0.195915 K |
+
+The estimator changes resistance because contact resistance also changes
+transient temperature differences. That is confounding. However, the
+nonzero residuals show that a static resistance cannot reproduce the entire
+first-order sensor response. A later multi-parameter fit could also confuse
+lag with thermal capacitance because both affect apparent response time. This
+study identifies that risk but does not fit capacitance.
+
+~~~bash
+python3 -m thermotwin.contact_resistance_lag_study
+python3 -m unittest tests.test_contact_resistance_lag_study
+~~~
+
+---
+
+## 22. Missing readings around turn-off
+
+### 22.1 Why turn-off is treated specially
+
+The training contact gap reaches its largest sampled value at the 20 s pulse
+turn-off. Validation turns off at 30 s, and the bipolar test turns off at 20
+and 50 s. The implementation derives those nonzero-to-zero transitions from
+each current schedule and centers the outages on them.
+
+The frozen cases remove both cold-sensor readings at:
+
+- no times;
+- 0 through 4 s as an equilibrium control;
+- only each turn-off instant;
+- plus or minus 2 s around turn-off; or
+- plus or minus 5 s around turn-off.
+
+### 22.2 Why parameter error is insufficient
+
+Every retained reading is still exact same-model data. Enough information
+remains for all five cases to recover 0.249999776 K/W. That does not mean the
+removed records were unimportant.
+
+The implementation uses local curvature of the unnormalized sum of squared
+errors $J$ as a sensitivity proxy:
+
+$$
+H_J\approx
+\frac{J(r_0-\delta)-2J(r_0)+J(r_0+\delta)}{\delta^2}.
+$$
+
+Normalization is deliberately removed by multiplying MSE by the number of
+available readings. Otherwise, deleting zero-sensitivity equilibrium records
+could artificially increase an average loss.
+
+| Case | Training records | SSE curvature | Fraction of complete curvature |
+| --- | ---: | ---: | ---: |
+| Complete | 122 | 304.8575 | 1.000 |
+| Remove equilibrium control | 112 | 304.8575 | 1.000 |
+| Remove turn-off instants | 120 | 286.4841 | 0.940 |
+| Remove plus-or-minus 2 s | 112 | 216.4959 | 0.710 |
+| Remove plus-or-minus 5 s | 100 | 133.4655 | 0.438 |
+
+The control and narrow turn-off cases both retain 112 readings, yet their
+curvatures differ substantially. Information depends on when measurements are
+taken, not merely how many exist.
+
+~~~bash
+python3 -m thermotwin.contact_resistance_missingness_study
+python3 -m unittest tests.test_contact_resistance_missingness_study
+~~~
+
+Curvature describes only local same-model sensitivity near the known truth.
+It is not a confidence interval and does not capture all nonlinear or
+multi-parameter ambiguities.
+
+---
+
+## 23. Restricted sensor sets
+
+### 23.1 Dataset meaning
+
+Restricted sensors are removed from both the dataset's sensor definitions and
+its observation records. The fitter receives an explicit tuple of available
+sensor names. It cannot use a sensor that is absent from the schema.
+
+The generalized inference functions preserve their original default: the
+cold face and cold exchanger are fitted unless another validated selection is
+passed explicitly. Predictions are paired only to retained observed times,
+which also makes partial outages valid.
+
+### 23.2 Results
+
+| Available sensors | Training records | SSE curvature | Exact inferred resistance |
+| --- | ---: | ---: | ---: |
+| Cold pair | 122 | 304.8575 | 0.249999776 K/W |
+| Cold face only | 61 | 208.8583 | 0.249999776 K/W |
+| Cold exchanger only | 61 | 95.9992 | 0.249999776 K/W |
+| Hot pair only | 122 | 1.9426 | 0.249999776 K/W |
+| All four | 244 | 306.8001 | 0.249999776 K/W |
+
+Exact recovery proves that each noiseless loss has its minimum at the truth.
+It does not mean the cases are equally robust. The hot pair responds only
+weakly through the coupled model, and adding it to the cold pair contributes
+less than 1 percent additional curvature. In this frozen experiment, a
+cold-face sensor is substantially more informative than a cold-exchanger
+sensor if only one can be retained.
+
+~~~bash
+python3 -m thermotwin.contact_resistance_sensor_study
+python3 -m unittest tests.test_contact_resistance_sensor_study
+~~~
+
+Hardware sensor selection must additionally consider placement uncertainty,
+calibration, cost, synchronization, thermal loading, and accessibility. Those
+effects are not represented here.
+
+---
+
+## 24. Combined measurement imperfections
+
+### 24.1 Frozen pipeline
+
+The combined implementation preserves the agreed physical order:
+
+~~~text
+dense four-node truth
+    -> first-order sensor lag at 0.1 s
+    -> output sampling at 1 s
+    -> fixed bias
+    -> independent Gaussian noise
+    -> regime-aligned turn-off outages
+    -> restricted returned sensor schema
+    -> scalar resistance fit
+~~~
+
+The frozen settings are:
+
+| Mechanism | Setting |
+| --- | --- |
+| Lag | Cold face, 2 s |
+| Bias | Cold face, +0.10 K |
+| Noise | All four sensors, 0.05 K standard deviation |
+| Noise seeds | Same 2026-based mapping as noise-only study |
+| Missingness | Both cold sensors, plus or minus 2 s at turn-off |
+| Available sensors | Cold face and cold exchanger only |
+| Trials | 100 |
+
+Noise is generated before unavailable records and sensors are removed. This
+preserves the previously agreed measurement pipeline and keeps a fixed random
+draw associated with each original sensor record.
+
+### 24.2 Results
+
+| Parameter metric | Combined result |
+| --- | ---: |
+| Mean inferred resistance | 0.201589285 K/W |
+| Sample standard deviation | 0.005680841 K/W |
+| Mean bias | -0.048410715 K/W |
+| Parameter RMSE | 0.048739579 K/W |
+| Empirical 5th percentile | 0.192003358 K/W |
+| Empirical 95th percentile | 0.210809525 K/W |
+| Search-bound hits | 0 |
+
+| Mean RMSE | Train | Validation | Test |
+| --- | ---: | ---: | ---: |
+| Against imperfect observations | 0.145442 K | 0.117285 K | 0.213847 K |
+| Against visible ideal truth | 0.049159 K | 0.039371 K | 0.065644 K |
+
+The mean is nearly 0.05 K/W below the truth. That systematic error is much
+larger than the 0.00568 K/W trial spread. The result illustrates why an
+apparently precise empirical distribution can still be centered on the wrong
+parameter.
+
+### 24.3 Limiting case and reproduction
+
+With noise, bias, and lag set to zero and outages disabled, the combined code
+recovers 0.249999776 K/W and sub-microkelvin errors. This proves that the
+composition machinery itself reduces to the ideal experiment.
+
+~~~bash
+python3 -m thermotwin.contact_resistance_combined_study
+python3 -m thermotwin.contact_resistance_combined_study --trials 5
+python3 -m unittest tests.test_contact_resistance_combined_study
+~~~
+
+The 5th--95th range is still an empirical interval over synthetic trials. It
+does not account for unknown hardware bias, uncertain lag structure,
+temperature-dependent properties, parameter mismatch, or the correctness of
+the four-node topology.
+
+---
+
+## 25. Shared robustness implementation
+
+`contact_resistance_robustness.py` provides the common safeguards used by the
+isolated and combined studies:
+
+- immutable whole-regime dataset transformations;
+- dense-before-sparse lag processing;
+- physical sensor-schema restriction;
+- matching of hidden ideal truth only to visible record keys;
+- selected-sensor record counting;
+- local training-SSE curvature;
+- common fit and train/validation/test scoring; and
+- separate observation and hidden-truth RMSEs.
+
+The fitter's original cold-pair behavior remains its default. New keyword
+arguments select another sensor set deliberately. Missing readings are paired
+by sensor and observed time rather than filled, interpolated, or treated as
+zero.
+
+Focused utility tests are in
+`tests/test_contact_resistance_robustness.py`. Run every current ThermoTwin
+test with:
+
+~~~bash
+python3 -m unittest discover -s tests
+~~~
+
+---
+
+## 26. Planned progression
 
 The next controlled extensions are:
 
-1. add fixed bias and study systematic parameter error;
-2. add sensor lag and test confusion with thermal capacitance;
-3. add the frozen missing-reading interval;
-4. fit using restricted sensor sets;
-5. combine imperfections only after their isolated effects are understood;
-6. compare conventional least squares with an inverse PINN;
-7. infer one contact resistance while perturbing other assumed-known values;
-8. quantify profile likelihood, bootstrap uncertainty, and practical
-   identifiability; and
-9. use sensitivity to select the next most informative experiment.
+1. compare conventional least squares with an inverse PINN on identical
+   imperfect observations;
+2. infer contact resistance while perturbing other assumed-known parameters;
+3. study simultaneous contact, capacitance, conductance, bias, and lag
+   ambiguities one small set at a time;
+4. quantify profile likelihood, bootstrap uncertainty, and practical
+   identifiability;
+5. use sensitivity to rank candidate current schedules and sensor layouts;
+   and
+6. design hardware trials only after safety limits and measurement definitions
+   are agreed.
 
-Each extension should preserve the ideal result and zero-imperfection result
-as limiting-case regression tests.
+Every extension should preserve the ideal and zero-imperfection limits as
+regression tests.

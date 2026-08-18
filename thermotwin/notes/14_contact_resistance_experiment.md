@@ -12,7 +12,8 @@ one unknown cold thermal contact resistance. It then repeats the fit over 100
 independently seeded 0.05 K Gaussian-noise trials. Every other physical
 parameter is held fixed. One current-pulse regime is used for fitting, a
 different pulse is used for validation, and a bipolar pulse is held out for
-testing.
+testing. Later blocks isolate fixed bias, sensor lag, informative missing
+readings, and restricted sensors before tracing their combined effect.
 
 Complete the prediction exercises before reading the result sections of
 `thermotwin/CONTACT_RESISTANCE_EXPERIMENT.md` or running the high-level
@@ -26,8 +27,17 @@ The relevant files are:
 - `thermotwin/virtual_test_stand.py`;
 - `thermotwin/contact_resistance_inference.py`;
 - `thermotwin/contact_resistance_noise_study.py`;
+- `thermotwin/contact_resistance_robustness.py`;
+- `thermotwin/contact_resistance_bias_study.py`;
+- `thermotwin/contact_resistance_lag_study.py`;
+- `thermotwin/contact_resistance_missingness_study.py`;
+- `thermotwin/contact_resistance_sensor_study.py`;
+- `thermotwin/contact_resistance_combined_study.py`;
 - `tests/test_contact_resistance_inference.py`;
-- `tests/test_contact_resistance_noise_study.py`; and
+- `tests/test_contact_resistance_noise_study.py`;
+- `tests/test_contact_resistance_robustness.py`;
+- the five corresponding bias, lag, missingness, sensor, and combined study
+  test files; and
 - `thermotwin/CONTACT_RESISTANCE_EXPERIMENT.md`.
 
 ---
@@ -54,6 +64,11 @@ The relevant files are:
 | Search bounds | 0.05 to 1.0 K/W |
 | Noise robustness extension | 100 trials at 0.05 K standard deviation |
 | First noise seed | 2026; three unique regime seeds per trial |
+| Bias cases | Individual, common-mode, and differential cold offsets |
+| Lag cases | Dense 0.1 s filtering before 1 s sampling |
+| Missingness cases | Regime-aligned cold-pair turn-off windows |
+| Sensor cases | Single cold, cold pair, hot pair, and all four |
+| Combined case | Lag, bias, noise, missingness, and cold-pair restriction |
 
 ---
 
@@ -964,6 +979,329 @@ supports.
 
 ---
 
+## Block 12 — Fixed bias and systematic parameter error
+
+### Exercise 59: Predict individual bias directions
+
+Before running the bias study, consider the measured cold contact gap
+$T_{cx}^{observed}-T_{cf}^{observed}$.
+
+1. How does +0.10 K cold-face bias change this measured gap?
+2. How does +0.10 K cold-exchanger bias change it?
+3. Predict which bias should make the fitted resistance larger and which
+   should make it smaller.
+4. Explain why the full answer also depends on absolute temperatures and the
+   coupled transient, not only the instantaneous gap.
+
+**My prediction:**
+
+### Exercise 60: Analyze common-mode and differential bias
+
+For these two patterns,
+
+- common mode: $b_{cf}=b_{cx}=+0.10$ K;
+- differential: $b_{cf}=+0.05$ K and $b_{cx}=-0.05$ K,
+
+answer:
+
+1. Which pattern preserves the contact temperature difference?
+2. Which changes it by -0.10 K?
+3. Why can common-mode bias still alter a loss based on both absolute
+   temperatures?
+4. Under what alternative loss would common-mode bias cancel exactly?
+5. What physical information would that alternative loss discard?
+
+**My analysis:**
+
+### Exercise 61: Trace and interpret the bias code
+
+Open `contact_resistance_bias_study.py`.
+
+1. Trace one case from ideal split through `apply_fixed_temperature_bias`,
+   fitting, and held-out evaluation.
+2. Verify that physical parameters and current schedules are unchanged.
+3. Run the module and record all five inferred resistances.
+4. Compare signed parameter error with train, validation, and test truth RMSE.
+5. Explain why more trials would not remove these deterministic shifts.
+
+**My trace and interpretation:**
+
+### Exercise 62: Audit bias limiting cases and claims
+
+Open `tests/test_contact_resistance_bias_study.py`.
+
+1. Find the exact zero-bias limiting-case test.
+2. Find the test enforcing opposite face/exchanger parameter directions.
+3. Explain why a frozen numerical regression is useful here.
+4. State what this study establishes and what it does not establish about
+   physical sensor calibration.
+
+**My audit:**
+
+### Checkpoint 12
+
+Ask Codex to review Exercises 59–62 for contact-gap signs, common-mode
+reasoning, and claims about averaging systematic errors.
+
+---
+
+## Block 13 — Sensor lag and contact-dynamics confusion
+
+### Exercise 63: Derive the first-order lag update
+
+Start with
+
+$$
+\frac{dT_s}{dt}=\frac{T_{target}-T_s}{\tau_s}.
+$$
+
+Assuming the target is constant over one step:
+
+1. Derive the exact update used in the code.
+2. Evaluate the decay factor for $\Delta t=0.1$ s and $\tau_s=2$ s.
+3. Evaluate it again for $\Delta t=1$ s.
+4. Explain why evolving only at 1 s output times defines a different sensor
+   response from evolving at 0.1 s and then sampling.
+5. State the limits as $\tau_s\to0$ and as $\tau_s\to\infty$.
+
+**My derivation:**
+
+### Exercise 64: Trace dense-before-sparse lag
+
+Trace `lag_contact_resistance_dataset_split` in
+`contact_resistance_robustness.py`.
+
+1. Where is dense truth regenerated for each current regime?
+2. Where is the sensor state evolved?
+3. Where is the result downsampled?
+4. Which metadata and current histories are preserved?
+5. Which test proves the zero-lag dense pipeline equals ideal 1 s data?
+
+**My code trace:**
+
+### Exercise 65: Interpret lag as a confounder
+
+Run `contact_resistance_lag_study.py` and answer:
+
+1. Why do face-only and exchanger-only lag move resistance differently?
+2. Why does common 2 s lag not cancel?
+3. Why can resistance reduce some lag error without eliminating it?
+4. Why is bipolar-test observation RMSE useful for detecting mismatch?
+5. How could a trainable capacitance be confused with sensor lag?
+6. What additional experiment might help distinguish the two?
+
+**My interpretation:**
+
+### Exercise 66: Review the lag tests and limitations
+
+Classify each test in `test_contact_resistance_lag_study.py` as a configuration,
+limiting-case, direction, regression, transfer, or reporting check. Then state
+why this study demonstrates a risk of capacitance confounding without actually
+quantifying joint capacitance-lag identifiability.
+
+**My review:**
+
+### Checkpoint 13
+
+Ask Codex to review Exercises 63–66 for the lag equation, ordering, and the
+difference between demonstrating confounding and identifying two parameters.
+
+---
+
+## Block 14 — Informative missing readings
+
+### Exercise 67: Locate every turn-off from code
+
+For each frozen regime, inspect `transition_times` and `values`.
+
+1. List every transition where current changes from nonzero to zero.
+2. Verify the training, validation, and bipolar-test turn-off times.
+3. Explain why the code derives these times instead of hard-coding 20 s for
+   every regime.
+4. Predict how many cold-pair readings remain for instant, plus-or-minus 2 s,
+   and plus-or-minus 5 s training outages.
+
+**My transition table:**
+
+### Exercise 68: Derive the information-curvature metric
+
+The study computes local curvature of training SSE rather than MSE.
+
+1. Write the centered second-difference formula.
+2. State the units of the numerator, denominator, and curvature.
+3. Explain why multiplying MSE by available-record count matters when cases
+   contain different numbers of records.
+4. Predict the curvature effect of removing equilibrium readings whose model
+   sensitivity to resistance is zero.
+5. State why curvature is not a confidence interval.
+
+**My derivation:**
+
+### Exercise 69: Compare equal-count missingness designs
+
+The equilibrium-control and plus-or-minus 2 s cases both retain 112 training
+records.
+
+1. Record both curvature values.
+2. Compute each as a fraction of complete-data curvature.
+3. Explain physically why the switch-adjacent case loses more information.
+4. Why does every case still recover the exact parameter?
+5. Predict what would happen to trial spread if 0.05 K noise were added.
+
+**My comparison:**
+
+### Exercise 70: Trace missing-record pairing
+
+Inspect the generalized `_paired_temperature_errors` and the missingness study.
+
+1. How are predictions matched to retained readings?
+2. Why are missing values not filled with zero, `NaN`, or interpolation?
+3. How does `match_split_schema` prevent hidden ideal records from entering
+   truth RMSE at unavailable times?
+4. Identify tests for transition alignment, counts, curvature, and exact
+   recovery.
+
+**My code audit:**
+
+### Checkpoint 14
+
+Ask Codex to review Exercises 67–70 for switch timing, SSE normalization, and
+the distinction between exact recovery and practical information.
+
+---
+
+## Block 15 — Restricted sensors and practical identifiability
+
+### Exercise 71: Predict sensor-set ranking
+
+Rank these sets before running the code:
+
+- cold face only;
+- cold exchanger only;
+- cold pair;
+- hot pair; and
+- all four sensors.
+
+Explain the physical path by which cold contact resistance influences each
+location. State which pair measures directly across the contact and which
+responds only through the coupled thermal system.
+
+**My ranking and reasoning:**
+
+### Exercise 72: Separate exact recovery from information
+
+After running `contact_resistance_sensor_study.py`:
+
+1. Why does every exact case recover 0.25 K/W?
+2. Compute the face-only to exchanger-only curvature ratio.
+3. Compute hot-pair curvature as a percentage of cold-pair curvature.
+4. Compute the percentage curvature added by hot sensors to the cold pair.
+5. Which result would you use for sensor selection, and why is exact recovery
+   alone inadequate?
+
+**My calculations:**
+
+### Exercise 73: Trace physical schema restriction
+
+Inspect `restrict_observation_dataset`.
+
+1. What happens to sensor definitions?
+2. What happens to long-form records?
+3. Which units and sampling metadata remain?
+4. How does the fitter reject an unavailable selected sensor?
+5. Why is filtering only the loss while retaining a hidden sensor a weaker
+   representation of physical availability?
+
+**My trace:**
+
+### Exercise 74: Design a hardware sensor decision
+
+Suppose only one cold-side sensor can be installed.
+
+1. Which location does this synthetic study favor?
+2. List at least four hardware factors absent from curvature alone.
+3. Propose a current schedule that could improve exchanger-only sensitivity.
+4. Explain how you would compare candidate schedules before hardware testing.
+
+**My design:**
+
+### Checkpoint 15
+
+Ask Codex to review Exercises 71–74 for the sensitivity path, numerical ratios,
+and any sensor recommendation stated more strongly than the synthetic model
+supports.
+
+---
+
+## Block 16 — Combined measurement imperfections
+
+### Exercise 75: Defend the transformation order
+
+For the implemented pipeline
+
+~~~text
+dense truth -> lag -> sample -> bias -> noise -> missing -> restrict
+~~~
+
+explain:
+
+1. Why lag must occur before sampling.
+2. Why bias and noise act on reported temperature values.
+3. Why missingness occurs after generating the readings.
+4. Why restricting sensors last preserves the agreed random sequence.
+5. Which pairs of transformations would commute mathematically and which
+   would change results if reversed.
+
+**My explanation:**
+
+### Exercise 76: Reconstruct the complete limiting case
+
+Configure:
+
+- zero noise;
+- zero bias;
+- zero lag;
+- no turn-off outage; and
+- the normal cold fitting pair.
+
+Predict every summary metric. Then find the test that enforces recovery below
+1e-6. Explain why a limiting case of the combined machinery is more valuable
+than testing each transformation only in isolation.
+
+**My prediction and test trace:**
+
+### Exercise 77: Analyze systematic error versus random spread
+
+For the 100-trial combined result:
+
+1. Record mean estimate, mean bias, sample standard deviation, and RMSE.
+2. Compute $|bias|/standard\ deviation$.
+3. Compare the combined mean and spread with the noise-only study using the
+   same seeds.
+4. Explain why the combined empirical interval misses 0.25 K/W.
+5. Would 1,000 trials correct this bias? What would improve instead?
+
+**My analysis:**
+
+### Exercise 78: Audit observation and truth errors
+
+1. Record mean train, validation, and test observation RMSE.
+2. Record the corresponding visible-truth RMSE.
+3. Explain why visible truth uses only keys that remain available after
+   missingness and restriction.
+4. Why is bipolar-test error largest?
+5. Identify one combined-study conclusion supported by the evidence and three
+   claims that would still be unjustified for hardware.
+
+**My audit:**
+
+### Checkpoint 16
+
+Ask Codex to review Exercises 75–78 for pipeline order, limiting cases,
+systematic-versus-random interpretation, and hardware caveats.
+
+---
+
 ## Interview teach-back
 
 ### 30-second explanation
@@ -977,8 +1315,10 @@ Explain why a current pulse helps identify thermal contact resistance.
 Explain the complete path from frozen current regimes through RK4 truth,
 ideal observations, whole-experiment splitting, cold-pair least squares,
 golden-section search, held-out validation, independent noisy repetitions, and
-empirical parameter statistics. State why neither the near-zero ideal errors
-nor the 100-trial percentile range establishes hardware accuracy.
+empirical parameter statistics. Continue through isolated bias, dense sensor
+lag, regime-aligned missingness, restricted sensor sets, and the combined
+pipeline. State why neither the near-zero ideal errors nor any synthetic
+percentile range establishes hardware accuracy.
 
 **My answer:**
 
@@ -998,6 +1338,15 @@ nor the 100-trial percentile range establishes hardware accuracy.
 12. Why must observation RMSE and hidden-truth RMSE be interpreted separately?
 13. Why is an empirical percentile range not automatically a confidence
     interval for hardware?
+14. Why does common-mode cold-sensor bias not cancel from this loss?
+15. Why must lag be evolved before sparse output sampling?
+16. Why can sensor lag be confused with contact resistance or capacitance?
+17. Why can two missing-data cases with equal record counts carry different
+    information?
+18. Why can exact recovery coexist with extremely weak practical sensitivity?
+19. Why do additional hot-side sensors add little cold-contact information in
+    the frozen experiment?
+20. Why do more Monte Carlo trials fail to correct systematic bias?
 
 **My answers:**
 

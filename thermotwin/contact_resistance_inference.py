@@ -313,24 +313,50 @@ def _paired_temperature_errors(
     observed: ObservationDataset,
     sensor_names: Sequence[str],
 ) -> Tuple[float, ...]:
+    """Pair predictions to the readings that are actually available."""
+
     errors = []
     for sensor_name in sensor_names:
         predicted_history = predicted.observations_for(sensor_name)
         observed_history = observed.observations_for(sensor_name)
-        if tuple(item.time for item in predicted_history) != tuple(
-            item.time for item in observed_history
-        ):
-            raise ValueError("predicted and observed times must match")
-        errors.extend(
-            prediction.temperature - measurement.temperature
-            for prediction, measurement in zip(
-                predicted_history,
-                observed_history,
-            )
+        predicted_by_time = {
+            item.time: item for item in predicted_history
+        }
+        missing_times = tuple(
+            item.time
+            for item in observed_history
+            if item.time not in predicted_by_time
         )
-    if not errors:
-        raise ValueError("at least one paired temperature is required")
+        if missing_times:
+            raise ValueError(
+                "every observed time must have a matching prediction"
+            )
+        errors.extend(
+            predicted_by_time[measurement.time].temperature
+            - measurement.temperature
+            for measurement in observed_history
+        )
     return tuple(errors)
+
+
+def _validated_fitted_sensor_names(
+    sensor_names: Sequence[str],
+) -> Tuple[str, ...]:
+    try:
+        normalized_names = tuple(sensor_names)
+    except TypeError as error:
+        raise ValueError("fitted sensor names must be a collection") from error
+    if not normalized_names:
+        raise ValueError("at least one fitted sensor name is required")
+    if not all(isinstance(name, str) for name in normalized_names):
+        raise ValueError("fitted sensor names must be strings")
+    if len(set(normalized_names)) != len(normalized_names):
+        raise ValueError("fitted sensor names must be unique")
+    unknown_names = set(normalized_names) - set(ALL_SENSOR_NAMES)
+    if unknown_names:
+        joined_names = ", ".join(sorted(unknown_names))
+        raise ValueError(f"unsupported fitted sensors: {joined_names}")
+    return normalized_names
 
 
 def _mean_squared_error(errors: Sequence[float]) -> float:
@@ -346,13 +372,29 @@ def _root_mean_squared_error(errors: Sequence[float]) -> float:
 def contact_resistance_training_loss(
     cold_contact_resistance: float,
     training_datasets: Sequence[ContactResistanceRegimeDataset],
+    *,
+    fitted_sensor_names: Sequence[str] = FITTED_SENSOR_NAMES,
 ) -> float:
-    """Return equal-weight cold-face/exchanger temperature MSE in K^2."""
+    """Return available-reading temperature MSE in K^2."""
 
     if not training_datasets:
         raise ValueError("at least one training regime is required")
+    fitted_sensor_names = _validated_fitted_sensor_names(
+        fitted_sensor_names
+    )
     all_errors = []
     for dataset in training_datasets:
+        available_sensor_names = {
+            sensor.name for sensor in dataset.observations.sensors
+        }
+        unavailable_names = (
+            set(fitted_sensor_names) - available_sensor_names
+        )
+        if unavailable_names:
+            joined_names = ", ".join(sorted(unavailable_names))
+            raise ValueError(
+                f"fitted sensors are unavailable: {joined_names}"
+            )
         predicted = simulate_contact_resistance_observations(
             dataset.regime,
             cold_contact_resistance=cold_contact_resistance,
@@ -362,7 +404,7 @@ def contact_resistance_training_loss(
             _paired_temperature_errors(
                 predicted,
                 dataset.observations,
-                FITTED_SENSOR_NAMES,
+                fitted_sensor_names,
             )
         )
     return _mean_squared_error(tuple(all_errors))
@@ -371,6 +413,8 @@ def contact_resistance_training_loss(
 def fit_cold_contact_resistance(
     training_datasets: Sequence[ContactResistanceRegimeDataset],
     config: ContactResistanceSearchConfig = ContactResistanceSearchConfig(),
+    *,
+    fitted_sensor_names: Sequence[str] = FITTED_SENSOR_NAMES,
 ) -> ContactResistanceFitResult:
     """Fit one positive resistance with dependency-free golden search."""
 
@@ -382,6 +426,9 @@ def fit_cold_contact_resistance(
         for dataset in training_datasets
     ):
         raise ValueError("only training regimes may enter the fit")
+    fitted_sensor_names = _validated_fitted_sensor_names(
+        fitted_sensor_names
+    )
 
     evaluations = []
 
@@ -389,6 +436,7 @@ def fit_cold_contact_resistance(
         loss = contact_resistance_training_loss(
             candidate,
             training_datasets,
+            fitted_sensor_names=fitted_sensor_names,
         )
         evaluations.append(
             ContactResistanceLossEvaluation(candidate, loss)
@@ -430,6 +478,37 @@ def fit_cold_contact_resistance(
         iterations=iterations,
         evaluations=tuple(evaluations),
     )
+
+
+def contact_resistance_observation_rmse(
+    cold_contact_resistance: float,
+    dataset: ContactResistanceRegimeDataset,
+    *,
+    sensor_names: Sequence[str],
+) -> float:
+    """Return RMSE at the selected available observation records."""
+
+    sensor_names = _validated_fitted_sensor_names(sensor_names)
+    available_sensor_names = {
+        sensor.name for sensor in dataset.observations.sensors
+    }
+    unavailable_names = set(sensor_names) - available_sensor_names
+    if unavailable_names:
+        joined_names = ", ".join(sorted(unavailable_names))
+        raise ValueError(f"selected sensors are unavailable: {joined_names}")
+    predicted = simulate_contact_resistance_observations(
+        dataset.regime,
+        cold_contact_resistance=cold_contact_resistance,
+        sampling_interval=dataset.observations.sampling_interval,
+    )
+    errors = _paired_temperature_errors(
+        predicted,
+        dataset.observations,
+        sensor_names,
+    )
+    if not errors:
+        raise ValueError("selected sensors have no available observations")
+    return _root_mean_squared_error(errors)
 
 
 def evaluate_contact_resistance_regime(

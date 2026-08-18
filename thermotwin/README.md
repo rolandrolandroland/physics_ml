@@ -331,6 +331,80 @@ python3 -m unittest \
   tests.test_contact_resistance_noise_study
 ~~~
 
+### Bias, lag, missingness, and sensor-availability studies
+
+Five dependency-free follow-on studies isolate the remaining measurement
+effects before combining them:
+
+~~~bash
+python3 -m thermotwin.contact_resistance_bias_study
+python3 -m thermotwin.contact_resistance_lag_study
+python3 -m thermotwin.contact_resistance_missingness_study
+python3 -m thermotwin.contact_resistance_sensor_study
+python3 -m thermotwin.contact_resistance_combined_study
+~~~
+
+The fixed-bias cases show systematic parameter shifts that averaging cannot
+remove. A +0.10 K cold-face bias produces 0.208885 K/W, while the same bias on
+the cold exchanger produces 0.272817 K/W. Equal +0.10 K bias on both cold
+sensors still produces 0.228450 K/W because the loss uses absolute
+temperatures as well as their difference.
+
+Sensor lag is applied to dense 0.1 s truth before 1 s output sampling. A 2 s
+cold-exchanger lag produces 0.270766 K/W, and 2 s lag on both cold sensors
+produces 0.270847 K/W. The resistance shift cannot reproduce the full dynamic
+lag, so held-out residuals remain.
+
+The missingness study removes both cold-sensor readings around each regime's
+nonzero-to-zero current transition. Exact remaining data still recover the
+truth, but the local training sum-of-squares curvature falls from 304.858 with
+complete readings to 216.496 for a plus-or-minus 2 s outage and 133.466 for a
+plus-or-minus 5 s outage. Removing five equilibrium readings per sensor leaves
+the curvature unchanged, confirming that switch-adjacent records are more
+informative than an equal number of steady records.
+
+The restricted-sensor study also recovers the truth in the exact same-model
+limit, but its information metric exposes large practical differences:
+
+| Available sensors | Training information curvature |
+| --- | ---: |
+| Cold face and cold exchanger | 304.858 |
+| Cold face only | 208.858 |
+| Cold exchanger only | 95.999 |
+| Hot pair only | 1.943 |
+| All four sensors | 306.800 |
+
+The hot pair adds less than 1 percent to the cold pair's information about the
+cold contact resistance in this experiment.
+
+The frozen combined pipeline is
+
+~~~text
+dense lag -> sample -> bias -> noise -> turn-off missingness -> restrict sensors
+~~~
+
+It uses 2 s cold-face lag, +0.10 K cold-face bias, 0.05 K independent Gaussian
+noise, plus-or-minus 2 s turn-off outages, and only the cold pair. Across the
+same 100 seeds used by the noise-only study, it produces:
+
+| Metric | Combined result |
+| --- | ---: |
+| Mean inferred resistance | 0.201589285 K/W |
+| Sample standard deviation | 0.005680841 K/W |
+| Mean parameter bias | -0.048410715 K/W |
+| Parameter RMSE | 0.048739579 K/W |
+| Empirical 5th--95th percentiles | 0.192003358--0.210809525 K/W |
+| Search-bound hits | 0 |
+
+The systematic bias is much larger than the random trial spread. Repetition
+therefore characterizes random variation but does not correct an incorrect
+measurement model. All results remain same-model synthetic studies rather
+than hardware uncertainty claims. The full derivations, case definitions, and
+limitations are in
+[CONTACT_RESISTANCE_EXPERIMENT.md](CONTACT_RESISTANCE_EXPERIMENT.md), with
+exercises in
+[notes/14_contact_resistance_experiment.md](notes/14_contact_resistance_experiment.md).
+
 ## First forward PINN
 
 The optional `thermotwin.forward_pinn` module contains a small PyTorch network
