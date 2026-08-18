@@ -1,0 +1,39 @@
+# ThermoTwin learning notes
+
+These notes are for explaining the model in my own words and checking that I
+understand every physical assumption, equation, sign, unit, and implementation
+choice. They are intentionally separate from the package README.
+
+## Note index
+
+| Note | Purpose | Status      |
+| --- | --- |-------------|
+| [01 — Sign conventions](01_sign_conventions.md) | Define heat-flow, current, voltage, and temperature signs | Revising    |
+| [02 — Thermoelectric terms](02_thermoelectric_terms.md) | Explain the Peltier, Joule, and conductive contributions | Not started |
+| [03 — Energy balances](03_energy_balances.md) | Derive the cold, hot, and combined-node balances | Not started |
+| [04 — Transient RHS](04_transient_rhs.md) | Map the balances to the implemented temperature rates | Not started |
+| [05 — Forward experiments](05_forward_experiments.md) | Record predictions, simulation designs, and interpretations | Not started |
+| [06 — Time integrator](06_time_integrator.md) | Understand transient physics, RK4, trajectory code, and numerical checks | Not started |
+| [07 — Time-varying current](07_time_varying_current.md) | Understand current schedules, switching physics, discontinuities, and pulse tests | Not started |
+
+Suggested statuses are `Not started`, `Draft`, `Revising`, and `Reviewed`.
+
+## Learning workflow
+
+1. Write the explanation and predictions without copying the README or code.
+2. Work through at least one limiting case and one numerical example by hand.
+3. Identify the exact code function and test corresponding to each claim.
+4. Ask Codex to review the physics, signs, units, and interpretation.
+5. Revise conceptual errors before asking Codex to polish wording.
+6. Record important mistakes and their consequences in the corrections section.
+7. Change the note status to `Reviewed` only after the reasoning and tests agree.
+
+## Questions that span multiple notes
+
+> Record questions here when they do not belong to only one topic.
+
+## Vocabulary to revisit
+
+| Term | My current explanation | What remains unclear |
+| --- | --- | --- |
+|  |  |  |
