@@ -1,0 +1,851 @@
+# 14 — Cold contact-resistance inference experiment
+
+Status: `Not started`
+
+## Purpose
+
+This worksheet develops both the physics and code understanding required for
+ThermoTwin's first conventional contact-parameter inference experiment.
+
+The experiment uses ideal synthetic temperature observations to infer one
+unknown cold thermal contact resistance. Every other physical parameter is
+held fixed. One current-pulse regime is used for fitting, a different pulse is
+used for validation, and a bipolar pulse is held out for testing.
+
+Complete the prediction exercises before reading the result sections of
+`thermotwin/CONTACT_RESISTANCE_EXPERIMENT.md` or running the high-level
+experiment.
+
+The relevant files are:
+
+- `thermotwin/contact_transient.py`;
+- `thermotwin/contact_experiments.py`;
+- `thermotwin/controls.py`;
+- `thermotwin/virtual_test_stand.py`;
+- `thermotwin/contact_resistance_inference.py`;
+- `tests/test_contact_resistance_inference.py`; and
+- `thermotwin/CONTACT_RESISTANCE_EXPERIMENT.md`.
+
+---
+
+## Frozen experiment decisions
+
+| Choice | Frozen value |
+| --- | --- |
+| Inferred parameter | Cold contact resistance only |
+| Hidden synthetic truth | 0.25 K/W |
+| Other physical parameters | Fixed at contact-reference values |
+| Initial and reservoir temperatures | 300 K |
+| External heat inputs | 0 W |
+| Duration | 60 s |
+| RK4 step | 0.1 s |
+| Observation interval | 1.0 s |
+| Stored sensors | All four nodes |
+| Sensors entering loss | Cold face and cold exchanger |
+| Training regime | 0 A, +1 A pulse, 0 A recovery |
+| Validation regime | Shifted +0.6 A pulse |
+| Test regime | +1 A and −1 A bipolar pulse |
+| Measurement imperfections | None |
+| Estimator | Bounded golden-section least squares |
+| Search bounds | 0.05 to 1.0 K/W |
+
+---
+
+## Block 1 — Reconstruct the physical problem
+
+### Exercise 1: Draw the four-node topology
+
+Draw the thermal network containing:
+
+- cold reservoir;
+- cold exchanger;
+- cold contact resistance;
+- cold thermoelectric face;
+- thermoelectric module;
+- hot thermoelectric face;
+- hot contact resistance;
+- hot exchanger; and
+- hot reservoir.
+
+Label the four dynamic temperatures and indicate the positive direction of
+both contact heat rates.
+
+**My diagram:**
+
+### Exercise 2: Write the contact heat laws
+
+Starting from thermal resistance, write expressions for:
+
+1. cold contact heat from exchanger to face; and
+2. hot contact heat from face to exchanger.
+
+State the units of temperature difference, resistance, and heat rate. Verify
+that kelvin divided by K/W gives watts.
+
+**My derivation:**
+
+### Exercise 3: Complete the cold-side balances
+
+Write the cold-face and cold-exchanger energy balances. Include:
+
+- cold contact heat;
+- module cold-side heat $Q_c$;
+- reservoir coupling;
+- external cold heat; and
+- both thermal capacitances.
+
+Explain the sign of every term.
+
+**My balances:**
+
+### Exercise 4: Complete the hot-side balances
+
+Write the hot-face and hot-exchanger balances. Explain why positive hot
+contact heat leaves the hot face but enters the hot exchanger.
+
+**My balances:**
+
+### Exercise 5: Identify what is known and unknown
+
+Make two lists.
+
+Known exactly in the first synthetic inverse problem:
+
+- thermoelectric parameters;
+- all four capacitances;
+- reservoir conductances;
+- hot contact resistance;
+- current schedule;
+- initial conditions; and
+- external heat inputs.
+
+Unknown:
+
+- cold contact resistance.
+
+Why would simultaneous uncertainty in capacitance or reservoir conductance
+make this a harder inverse problem?
+
+**My explanation:**
+
+### Checkpoint 1
+
+Ask Codex to review Exercises 1–5 before studying the current schedules.
+
+---
+
+## Block 2 — Understand the current regimes
+
+### Exercise 6: Write the training schedule
+
+The training current is:
+
+| Time | Current |
+| --- | ---: |
+| 0–5 s | 0 A |
+| 5–20 s | +1 A |
+| 20–60 s | 0 A |
+
+Write the corresponding `PiecewiseConstantCurrent` values and transition
+times without looking at the implementation.
+
+**My code prediction:**
+
+### Exercise 7: Predict switch behavior
+
+At exactly 5 s:
+
+1. what current is recorded?
+2. can any temperature jump?
+3. which heat-rate terms change immediately?
+4. which temperature derivatives may change?
+
+Repeat at exactly 20 s.
+
+**My prediction:**
+
+### Exercise 8: Explain the baseline interval
+
+Why include five seconds at 0 A before the pulse if the model begins at exact
+equilibrium?
+
+Discuss its usefulness for:
+
+- confirming initial conditions;
+- checking current alignment;
+- revealing sensor bias in later extensions; and
+- identifying contact resistance in the ideal baseline.
+
+Which purpose provides little resistance information here?
+
+**My explanation:**
+
+### Exercise 9: Compare the three regimes
+
+Explain what changes between:
+
+1. the +1 A training pulse;
+2. the shifted +0.6 A validation pulse; and
+3. the +1/−1 A bipolar test pulse.
+
+Why is a different current amplitude more informative for validation than a
+copy of the training schedule?
+
+**My comparison:**
+
+### Exercise 10: Explain current reversal
+
+When current changes from +1 A to −1 A:
+
+1. what happens to the sign of the Peltier term?
+2. what happens to $I^2R$ Joule heating?
+3. why can this help separate thermoelectric and contact effects?
+4. why is the bipolar regime kept out of the fitting loss?
+
+**My explanation:**
+
+### Checkpoint 2
+
+Ask Codex to review Exercises 6–10 before predicting temperature responses.
+
+---
+
+## Block 3 — Predict the transient physics
+
+### Exercise 11: Predict the first second after turn-on
+
+At 5 s all four nodes are at 300 K. The current becomes +1 A.
+
+Without running the solver, predict the signs of:
+
+- $dT_{cf}/dt$;
+- $dT_{hf}/dt$;
+- $dT_{cx}/dt$; and
+- $dT_{hx}/dt$
+
+immediately after turn-on. Use the module face heat rates and zero initial
+contact temperature drops to justify each sign.
+
+**My prediction:**
+
+### Exercise 12: Predict development of the cold contact gap
+
+Define
+
+$$
+\Delta T_{contact,c}=T_{cx}-T_{cf}.
+$$
+
+1. What is it at 5 s?
+2. Why should it become positive during cooling?
+3. Which node initially changes faster?
+4. Does a positive gap mean heat flows toward or away from the cold face?
+
+**My explanation:**
+
+### Exercise 13: Compare low and high contact resistance
+
+For the same current pulse, predict how increasing cold contact resistance
+from 0.10 to 0.50 K/W changes:
+
+- cold-face temperature;
+- cold-exchanger temperature;
+- the contact temperature gap;
+- contact heat transfer for a fixed gap; and
+- face-to-exchanger equalization speed.
+
+Be careful: the actual heat rate and gap both change dynamically, so do not
+assume one remains fixed unless you state it explicitly.
+
+**My prediction:**
+
+### Exercise 14: Predict recovery after turn-off
+
+At 20 s the current becomes zero.
+
+1. Which Peltier and Joule terms disappear?
+2. Which conductive and reservoir terms remain?
+3. Should the cold face initially warm or cool?
+4. Should the contact gap grow or shrink?
+5. Why may the system still be away from 300 K at 60 s?
+
+**My prediction:**
+
+### Exercise 15: Estimate a contact time scale
+
+Use the rough products $R_{contact,c}C_{cf}$ and
+$R_{contact,c}C_{cx}$ with 0.25 K/W and 50 J/K.
+
+1. Calculate both products in seconds.
+2. Compare them with the 15 s powered interval.
+3. Compare them with the 1 s observation interval.
+4. Why is this only a rough guide for the coupled four-node system?
+
+**My calculation:**
+
+### Checkpoint 3
+
+Ask Codex to review Exercises 11–15 before generating synthetic data.
+
+---
+
+## Block 4 — Understand the synthetic datasets
+
+### Exercise 16: Separate hidden truth from observations
+
+Describe the difference between:
+
+1. the mathematical continuous-time temperature solution;
+2. the 0.1 s RK4 trajectory;
+3. the 1 s four-sensor observations; and
+4. the dataset received by the scalar fitter.
+
+Which object contains 601 times? Which contains 61 times and 244 long-form
+records? Which must stay hidden from inference?
+
+**My explanation:**
+
+### Exercise 17: Calculate observation counts
+
+For one 60 s experiment sampled every 1 s, calculate:
+
+1. the number of measurement times;
+2. the number of records for one sensor;
+3. the number of records for four sensors; and
+4. the total records across three regimes.
+
+Explain why the exact final time is included.
+
+**My calculations:**
+
+### Exercise 18: Explain whole-regime splitting
+
+Why is this split scientifically stronger than randomly assigning individual
+time points?
+
+~~~text
+train:      complete unipolar pulse
+validation: complete lower-amplitude pulse
+test:       complete bipolar pulse
+~~~
+
+What leakage would occur if 19 s were in training and 20 s from the same
+trajectory were treated as an independent test example?
+
+**My explanation:**
+
+### Exercise 19: Audit hidden parameter leakage
+
+Read `ContactResistanceRegimeDataset` and
+`ContactResistanceDatasetSplit`.
+
+1. Which fields do they contain?
+2. Do they contain the true resistance?
+3. Where is current information stored?
+4. Where are sensor locations and units stored?
+5. When is the true value allowed to reappear for scoring?
+
+**My audit:**
+
+### Exercise 20: Explain why observations are ideal first
+
+Why are noise, bias, lag, and missingness disabled in the first recovery?
+
+For each imperfection, name one way it could obscure a problem in the
+optimizer or physical parameterization.
+
+**My explanation:**
+
+### Checkpoint 4
+
+Ask Codex to review Exercises 16–20 before studying the loss function.
+
+---
+
+## Block 5 — Derive the fitting objective
+
+### Exercise 21: Select the fitted sensors
+
+Explain why the cold face and cold exchanger are the first two sensors used to
+infer cold contact resistance.
+
+Why are the hot sensors stored but excluded from the fitting loss?
+
+**My explanation:**
+
+### Exercise 22: Derive the mean squared error
+
+Write the equal-weight loss over 61 times and two fitted sensors:
+
+$$
+L(r)=\frac{1}{122}
+\sum_{s\in\{cf,cx\}}\sum_{k=1}^{61}
+\left[T_{s,k}^{pred}(r)-T_{s,k}^{obs}\right]^2.
+$$
+
+1. Why is the denominator 122?
+2. What are the loss units?
+3. What does exact zero mean in this synthetic experiment?
+4. Why would exact zero be unrealistic with hardware data?
+
+**My derivation:**
+
+### Exercise 23: Predict the sensitivity sweep
+
+Before running it, rank the expected training losses at:
+
+- 0.10 K/W;
+- 0.25 K/W; and
+- 0.50 K/W.
+
+Which should be exactly zero? Must the low- and high-candidate losses be
+symmetric around the true value? Explain.
+
+**My prediction:**
+
+### Exercise 24: Distinguish sensitivity and identifiability
+
+Explain why visibly different curves at different resistances establish local
+sensitivity but do not prove practical identifiability if other parameters
+are also uncertain.
+
+Give examples involving:
+
+- cold-face capacitance;
+- cold reservoir conductance;
+- sensor lag; and
+- fixed cold-face bias.
+
+**My explanation:**
+
+### Exercise 25: Design alternative weighting
+
+Propose how the loss might change if:
+
+1. sensors have different known noise levels;
+2. transient times should receive more emphasis;
+3. one sensor has missing records; or
+4. temperature errors are temporally correlated.
+
+Why is equal weighting acceptable only as a first ideal baseline?
+
+**My design:**
+
+### Checkpoint 5
+
+Ask Codex to review Exercises 21–25 before studying the scalar optimizer.
+
+---
+
+## Block 6 — Understand golden-section search
+
+### Exercise 26: Explain why a scalar search is enough
+
+Why does the first conventional estimator not require:
+
+- a neural network;
+- automatic differentiation;
+- a multidimensional optimizer; or
+- an initial parameter guess?
+
+What changes when two contact resistances are inferred simultaneously?
+
+**My explanation:**
+
+### Exercise 27: Check the search bounds
+
+The search interval is 0.05 to 1.0 K/W.
+
+1. Why must the lower bound be positive?
+2. Does the interval contain the hidden truth?
+3. What would it mean if the best estimate landed at 0.05 K/W?
+4. How could an overly narrow interval create false confidence?
+
+**My analysis:**
+
+### Exercise 28: Trace one golden-section iteration
+
+Starting with interval $[a,b]$, explain how the two interior points are
+selected and how comparing their losses allows one side of the interval to be
+discarded.
+
+Why can one previous loss evaluation be reused on the next iteration?
+
+**My explanation:**
+
+### Exercise 29: Interpret stopping criteria
+
+The frozen configuration uses:
+
+- resistance tolerance 1e-8 K/W; and
+- at most 96 iterations.
+
+Explain the purpose of both rules. Why should the implementation stop if
+either rule is reached?
+
+**My explanation:**
+
+### Exercise 30: Audit the search history
+
+Read `fit_cold_contact_resistance`.
+
+1. Where is each candidate recorded?
+2. Where is each MSE recorded?
+3. Are candidates allowed outside the bounds?
+4. Can validation or test datasets enter the fitter?
+5. Why is keeping the complete search history useful?
+
+**My code trace:**
+
+### Checkpoint 6
+
+Ask Codex to review Exercises 26–30 before tracing the full implementation.
+
+---
+
+## Block 7 — Trace the implementation
+
+### Exercise 31: Trace regime construction
+
+Read `reference_contact_resistance_regimes`.
+
+For each regime, record:
+
+- name;
+- split;
+- transition times; and
+- current values.
+
+Verify that the schedules use the right-continuous control class.
+
+**My code trace:**
+
+### Exercise 32: Trace candidate experiment construction
+
+Read `contact_resistance_experiment`.
+
+1. Which reference experiment is copied?
+2. Which thermal parameter is replaced?
+3. Which current schedule is replaced?
+4. Which physical quantities remain unchanged?
+5. Where is positivity checked?
+
+**My code trace:**
+
+### Exercise 33: Trace observation generation
+
+Read `simulate_contact_resistance_observations`.
+
+1. Where is RK4 executed?
+2. Which object contains the dense trajectory temporarily?
+3. Where are observations sampled?
+4. Does the returned dataset contain dense truth?
+5. How is the measurement interval selected?
+
+**My code trace:**
+
+### Exercise 34: Trace paired errors
+
+Read `_paired_temperature_errors`.
+
+1. Why must predicted and observed times match exactly?
+2. In what order are sensor errors appended?
+3. What happens if there are no paired temperatures?
+4. Why is this helper separate from the optimizer?
+
+**My code trace:**
+
+### Exercise 35: Trace held-out evaluation
+
+Read `evaluate_contact_resistance_regime`.
+
+1. Which four per-sensor RMSE values are calculated?
+2. What enters `fitted_pair_rmse`?
+3. What enters `all_sensor_rmse`?
+4. Why are both useful?
+
+**My code trace:**
+
+### Exercise 36: Trace the high-level experiment
+
+Read `run_contact_resistance_inference_experiment` and draw its call graph.
+Include:
+
+- dataset generation;
+- fitting;
+- sensitivity evaluation;
+- parameter scoring;
+- training metrics;
+- validation metrics; and
+- test metrics.
+
+Mark the point after which hidden truth may be used for validation.
+
+**My call graph:**
+
+### Checkpoint 7
+
+Ask Codex to review Exercises 31–36 before examining numerical results.
+
+---
+
+## Block 8 — Analyze the numerical results
+
+### Exercise 37: Run the experiment
+
+Run:
+
+~~~bash
+python3 -m thermotwin.contact_resistance_inference
+~~~
+
+Record:
+
+- inferred resistance;
+- relative parameter error;
+- search evaluations;
+- training RMSE;
+- validation RMSE; and
+- test RMSE.
+
+**My result:**
+
+### Exercise 38: Verify the training transient
+
+Print the cold-face and cold-exchanger observations at 0, 5, 6, 10, 15, 20,
+21, 30, and 60 s.
+
+1. At which time is the sampled contact gap largest?
+2. At which time is the cold face coldest?
+3. Why is the recorded current already 0 A at 20 s?
+4. Why does the contact gap remain nonzero after turn-off?
+
+**My table and interpretation:**
+
+### Exercise 39: Verify resistance sensitivity at 20 s
+
+Run the training regime at 0.10, 0.25, and 0.50 K/W. Record the cold face,
+cold exchanger, and contact gap at 20 s.
+
+Compare the result with your Exercise 13 prediction. Correct any mistaken
+assumption about fixed heat rate versus fixed temperature difference.
+
+**My results:**
+
+### Exercise 40: Interpret near-zero errors
+
+The parameter and temperature errors are near floating-point precision.
+
+Explain why this does **not** mean:
+
+- the model has nanokelvin hardware accuracy;
+- a physical contact resistance can be known to nine decimal places;
+- the fixed parameters are correct; or
+- the inverse problem will remain easy after adding noise.
+
+Use the phrase `same-model synthetic baseline` or `inverse crime` correctly.
+
+**My interpretation:**
+
+### Exercise 41: Evaluate transfer to unseen regimes
+
+Why do low validation and bipolar-test errors provide a stronger software
+check than training error alone?
+
+Why do they still not constitute broad empirical generalization?
+
+**My explanation:**
+
+### Checkpoint 8
+
+Ask Codex to review Exercises 37–41 before adding observation imperfections.
+
+---
+
+## Block 9 — Predict measurement-imperfection effects
+
+### Exercise 42: Add Gaussian noise conceptually
+
+Predict how independent 0.05 K noise would change:
+
+- the minimum training loss;
+- the fitted resistance;
+- repeated estimates across seeds; and
+- the appropriate loss weighting.
+
+Would one noisy trial be enough to quantify uncertainty?
+
+**My prediction:**
+
+### Exercise 43: Add fixed bias conceptually
+
+Suppose only the cold-face sensor has +0.10 K bias.
+
+1. Which contact gap is systematically altered?
+2. Which direction might the resistance estimate move?
+3. Why is the direction worth verifying numerically rather than guessing?
+4. Why will averaging more time points not remove the error?
+
+**My prediction:**
+
+### Exercise 44: Add sensor lag conceptually
+
+Suppose the cold-face sensor has a 2 s lag.
+
+1. How can lag resemble extra thermal capacitance?
+2. Which parts of the pulse are most affected?
+3. Why could an inference method compensate with a wrong contact resistance?
+4. What independent calibration would help?
+
+**My analysis:**
+
+### Exercise 45: Add missing observations conceptually
+
+Remove cold-face readings from 20 through 30 s.
+
+1. Which key event occurs at the beginning of that interval?
+2. Does the thermal trajectory change?
+3. Which resistance-sensitive information is lost?
+4. Why may 11 missing records remove more than 11/244 of useful information?
+
+**My analysis:**
+
+### Exercise 46: Design the staged robustness study
+
+Put these extensions in an order that isolates causes:
+
+- noise;
+- bias;
+- lag;
+- missing readings;
+- multiple uncertain parameters; and
+- model mismatch.
+
+For every stage, name the result from the previous stage that must remain as a
+limiting-case test.
+
+**My study design:**
+
+### Checkpoint 9
+
+Ask Codex to review Exercises 42–46 before implementing robustness trials.
+
+---
+
+## Block 10 — Identifiability, limitations, and next experiments
+
+### Exercise 47: Construct a parameter-confounding table
+
+For each quantity, explain one way an incorrect value could be compensated by
+an incorrect cold contact resistance:
+
+| Quantity | Possible confounding mechanism |
+| --- | --- |
+| Cold-face capacitance |  |
+| Cold-exchanger capacitance |  |
+| Cold reservoir conductance |  |
+| Module thermal conductance |  |
+| Cold-face bias |  |
+| Cold-face lag |  |
+
+**My table:**
+
+### Exercise 48: Propose a profile-loss analysis
+
+Describe how you would evaluate training loss across a dense grid of fixed
+resistance values.
+
+1. What does a sharp minimum suggest?
+2. What does a flat valley suggest?
+3. How would noise change the curve?
+4. Why is optimizer convergence not the same as identifiability?
+
+**My plan:**
+
+### Exercise 49: Choose the next informative experiment
+
+Propose one new current schedule that is not already in the three frozen
+regimes. State:
+
+- amplitude;
+- transition times;
+- duration;
+- sensors;
+- sampling interval; and
+- the ambiguity it is intended to reduce.
+
+Explain how you would compare its predicted information with the existing
+pulses before running hardware.
+
+**My proposed experiment:**
+
+### Exercise 50: State hardware requirements
+
+Before applying any schedule to hardware, list required decisions about:
+
+- allowable current and voltage;
+- temperature limits;
+- current-driver behavior;
+- sensor placement and calibration;
+- sampling synchronization;
+- contact assembly and clamping;
+- reservoir conditions;
+- emergency shutdown; and
+- repeatability.
+
+Which of these are absent from the synthetic software experiment?
+
+**My checklist:**
+
+### Checkpoint 10
+
+Ask Codex to review Exercises 47–50 before extending the estimator or planning
+a physical trial.
+
+---
+
+## Interview teach-back
+
+### 30-second explanation
+
+Explain why a current pulse helps identify thermal contact resistance.
+
+**My answer:**
+
+### Two-minute explanation
+
+Explain the complete path from frozen current regimes through RK4 truth,
+ideal observations, whole-experiment splitting, cold-pair least squares,
+golden-section search, and held-out validation. State why the near-zero errors
+do not establish hardware accuracy.
+
+**My answer:**
+
+### Challenge questions
+
+1. Why do temperatures remain continuous when current switches?
+2. Why can temperature derivatives change immediately?
+3. Why does a larger resistance create a larger driven contact gap here?
+4. Why are both temperatures across the contact valuable?
+5. Why exclude hot-side readings from the fitting loss but retain them?
+6. Why split by experiment rather than time point?
+7. Why is exact synthetic recovery necessary but insufficient?
+8. Why can sensor lag be confused with thermal capacitance?
+9. Why can missing switch-time data be especially damaging?
+10. What would make the resistance practically unidentifiable?
+
+**My answers:**
+
+---
+
+## Corrections log
+
+| Exercise | My original mistake | Consequence | Corrected understanding |
+| --- | --- | --- | --- |
+|  |  |  |  |
+
+## Questions for review
+
+1.
+2.
+3.

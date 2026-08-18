@@ -254,6 +254,39 @@ sampling, temperature noise, fixed bias, sensor lag, and missing observations
 are in
 [notes/13_measurement_imperfections.md](notes/13_measurement_imperfections.md).
 
+## Cold contact-resistance inference experiment
+
+The dependency-free
+[contact_resistance_inference.py](contact_resistance_inference.py) module
+performs the first conventional inference of one cold thermal contact
+resistance. Every other physical parameter remains fixed. Ideal observations
+from the cold face and cold exchanger enter an equal-weight least-squares
+loss; both hot-side histories are retained as independent consistency checks.
+
+Whole experiments are split by operating regime:
+
+- training: a +1 A pulse from 5 to 20 s;
+- validation: a +0.6 A pulse from 10 to 30 s; and
+- testing: a held-out +1 A/−1 A bipolar schedule.
+
+A bounded golden-section search over 0.05 to 1.0 K/W recovers the hidden
+0.25 K/W resistance as 0.250000002 K/W in 42 loss evaluations. Fitted-pair
+RMSE remains below 2.3e-9 K on all three regimes.
+
+~~~bash
+python3 -m thermotwin.contact_resistance_inference
+~~~
+
+The near-floating-point errors are expected because the same noise-free model
+generates and fits the data. They validate the controlled inference workflow,
+not hardware accuracy or robustness to uncertain parameters and measurement
+imperfections.
+
+The complete standalone walkthrough is
+[CONTACT_RESISTANCE_EXPERIMENT.md](CONTACT_RESISTANCE_EXPERIMENT.md). Physics,
+code, optimization, validation, and interpretation exercises are in
+[notes/14_contact_resistance_experiment.md](notes/14_contact_resistance_experiment.md).
+
 ## First forward PINN
 
 The optional `thermotwin.forward_pinn` module contains a small PyTorch network

@@ -21,6 +21,7 @@ choice. They are intentionally separate from the package README.
 | [11 — Contact reference and diagnostics](11_contact_reference_diagnostics.md) | Understand the frozen contact experiment, derived histories, energy closure, COP definitions, topology comparison, and resistance sweep | Not started |
 | [12 — Virtual test stand](12_virtual_test_stand.md) | Understand sensor locations, observation schemas, sampling, interpolation, hidden truth, noise, bias, lag, and missing readings | Not started |
 | [13 — Measurement imperfections](13_measurement_imperfections.md) | Consolidate temperature noise, sensor bias, sensor lag, deterministic missingness, transformation order, and identifiability | Not started |
+| [14 — Contact-resistance experiment](14_contact_resistance_experiment.md) | Understand pulse design, regime-level splitting, cold contact sensitivity, scalar least squares, held-out validation, and limitations | Not started |
 
 Suggested statuses are `Not started`, `Draft`, `Revising`, and `Reviewed`.
 

@@ -22,11 +22,13 @@ foundation of that larger goal. It contains:
 11. Fixed per-sensor temperature bias and a combined noise-plus-bias workflow.
 12. First-order per-sensor dynamic lag applied before output sampling.
 13. Deterministic per-sensor missing-observation intervals.
-14. A forward physics-informed neural network, or PINN.
-15. An RK4-versus-PINN comparison report.
-16. A first inverse PINN that infers the module thermal conductance $K$ from
+14. Whole-regime train, validation, and test experiment datasets.
+15. Conventional least-squares inference of one cold contact resistance.
+16. A forward physics-informed neural network, or PINN.
+17. An RK4-versus-PINN comparison report.
+18. A first inverse PINN that infers the module thermal conductance $K$ from
    sparse synthetic temperature observations.
-17. Unit, sign, energy, sampling, measurement, numerical, PINN, and
+19. Unit, sign, energy, sampling, measurement, numerical, PINN, and
     identifiability tests.
 
 The package does **not** yet represent a hardware-validated digital twin. Its
@@ -63,7 +65,7 @@ standard library. Run all current ThermoTwin tests with:
 python3 -m unittest discover -s tests
 ```
 
-The current suite contains 140 focused tests. Optional learned-model and report
+The current suite contains 156 focused tests. Optional learned-model and report
 tests are skipped
 when their optional dependencies are not installed.
 
@@ -1431,9 +1433,9 @@ handling transition points in a time-dependent-control PINN.
 
 ---
 
-## 11. First inverse problem: learning $K$
+## 11. Inverse parameter baselines
 
-The inverse implementation lives in
+The first inverse PINN implementation lives in
 [`inverse_thermal_conductance.py`](inverse_thermal_conductance.py).
 The companion learning exercises are in
 [`notes/09_inverse_thermal_conductance.md`](notes/09_inverse_thermal_conductance.md).
@@ -1589,6 +1591,95 @@ zero in this limiting case.
 The test suite checks this explicitly. A positive parameter constraint can
 prevent an unphysical negative estimate, but it cannot create information that
 is absent from the experiment.
+
+### 11.10 Conventional cold contact-resistance inference
+
+The second inverse baseline uses the conventional four-node RK4 model rather
+than a neural network. It infers one positive cold contact resistance from
+ideal transient observations while holding every other parameter fixed.
+
+The implementation lives in
+[`contact_resistance_inference.py`](contact_resistance_inference.py). The
+standalone walkthrough is
+[`CONTACT_RESISTANCE_EXPERIMENT.md`](CONTACT_RESISTANCE_EXPERIMENT.md), and the
+companion exercises are in
+[`notes/14_contact_resistance_experiment.md`](notes/14_contact_resistance_experiment.md).
+
+The cold contact connects $T_{cx}$ and $T_{cf}$:
+
+$$
+Q_{contact,c}=\frac{T_{cx}-T_{cf}}{R_{contact,c}}.
+$$
+
+The frozen hidden truth is 0.25 K/W. The other contact remains 0.25 K/W, the
+module conductance remains 0.5 W/K, and all capacitances, reservoir couplings,
+initial conditions, and external inputs remain at their contact-reference
+values.
+
+Three complete 60 s experiments are assigned by operating regime rather than
+by random time point:
+
+| Split | Current schedule | Purpose |
+| --- | --- | --- |
+| Train | 0 A to 5 s, +1 A to 20 s, then 0 A | Fit one resistance from turn-on and recovery |
+| Validation | 0 A to 10 s, +0.6 A to 30 s, then 0 A | Check a new amplitude and timing |
+| Test | 0, +1, 0, −1, 0 A at 5, 20, 35, and 50 s | Check an unseen bipolar regime |
+
+Each regime uses a 0.1 s RK4 step and ideal observations every 1 s. All four
+sensors are stored, giving 61 times and 244 records per regime. Only the cold
+face and cold exchanger enter the equal-weight training loss:
+
+$$
+L(r)=\frac{1}{122}
+\sum_{s\in\{cf,cx\}}\sum_{k=1}^{61}
+\left[T_{s,k}^{pred}(r)-T_{s,k}^{obs}\right]^2.
+$$
+
+The hot-side sensor histories are evaluated only after fitting as coupled-model
+consistency checks. Validation and test regimes are rejected if passed to the
+fitting function.
+
+The first sensitivity sweep produces:
+
+| Candidate $R_{contact,c}$ | Training MSE |
+| ---: | ---: |
+| 0.10 K/W | 3.757467722442e-2 K² |
+| 0.25 K/W | 0 K² |
+| 0.50 K/W | 5.104280388841e-2 K² |
+
+At training turn-off, 20 s, the cold face and exchanger are 297.448416 K and
+298.990085 K. Their 1.541669 K separation is the maximum sampled contact gap.
+At the same time, candidate gaps are 0.723369 K at 0.10 K/W and 2.279022 K at
+0.50 K/W. This demonstrates useful sensitivity in the frozen problem.
+
+Because only one scalar is unknown, a dependency-free golden-section search is
+used instead of a neural network or multidimensional optimizer. The bounds are
+0.05 to 1.0 K/W, the resistance-interval tolerance is 1e-8 K/W, and the maximum
+is 96 iterations.
+
+The frozen run takes 39 iterations and 42 loss evaluations. It obtains:
+
+| Metric | Value |
+| --- | ---: |
+| True cold contact resistance | 0.250000000 K/W |
+| Inferred cold contact resistance | 0.250000002 K/W |
+| Relative parameter error | 6.078777e-7 % |
+| Training fitted-pair RMSE | 1.698464e-9 K |
+| Validation fitted-pair RMSE | 1.328620e-9 K |
+| Test fitted-pair RMSE | 2.208849e-9 K |
+
+Run the experiment with:
+
+~~~bash
+python3 -m thermotwin.contact_resistance_inference
+~~~
+
+The tiny errors arise because noise-free observations are generated and fit
+with the same equations, fixed parameters, time step, and observation model.
+This same-model synthetic baseline verifies code plumbing and establishes an
+ideal one-parameter recovery limit. It does not establish hardware accuracy,
+parameter uncertainty, multi-parameter identifiability, or robustness to
+noise, bias, lag, missing records, and model discrepancy.
 
 ---
 
@@ -1808,6 +1899,27 @@ Checks:
 - retention of all four measurement-model configurations; and
 - the effect of applying seeded noise in the wrong order.
 
+### 12.18 `test_contact_resistance_inference.py`
+
+Checks:
+
+- exact train, validation, and test current regimes;
+- valid regime names, split labels, and piecewise-constant controls;
+- replacement of only the candidate cold contact and current schedule;
+- positive finite candidate resistance;
+- complete ideal datasets with 61 times and 244 records per regime;
+- nonempty, correctly labeled, uniquely named whole-regime splits;
+- hidden-truth exclusion from inference datasets;
+- right-continuous current with continuous switch temperatures;
+- the frozen maximum 1.541669 K cold contact gap at 20 s;
+- increasing driven contact gap with increasing resistance;
+- an exact same-model training-loss minimum at 0.25 K/W;
+- exclusion of hot-side readings from the fitting loss;
+- valid scalar-search bounds and stopping values;
+- rejection of validation regimes by the fitter;
+- recovery of the hidden resistance with bounded search history; and
+- low errors on the complete unseen validation and test regimes.
+
 ---
 
 ## 13. Validation levels and what they mean
@@ -1880,7 +1992,15 @@ pipeline ordering. They do not establish why real records go missing, whether
 availability depends on an unobserved temperature, or whether the frozen
 outage resembles hardware communication failures.
 
-### 13.11 Hardware validation
+### 13.11 Synthetic contact-resistance inference validation
+
+The contact-inference tests verify pulse-regime generation, whole-experiment
+splitting, contact-gap sensitivity, bounded scalar optimization, exact ideal
+recovery, and transfer to two unseen current schedules. They do not validate
+the four-node model against hardware or quantify robustness when other
+parameters and sensor properties are uncertain.
+
+### 13.12 Hardware validation
 
 Hardware validation will require measured temperatures, currents, voltages,
 sensor timing and locations, calibration information, contact modeling, and a
@@ -1920,6 +2040,9 @@ The current results depend on these assumptions:
 17. The first missingness model omits cold-face records from 20 through 30 s,
     inclusively, after noise generation. It represents failed reporting while
     the sensor and thermal model continue evolving.
+18. The first contact-resistance inference uses ideal complete observations,
+    treats only the cold contact resistance as unknown, fits the cold face and
+    exchanger, and keeps entire current regimes in separate data splits.
 
 ### 14.1 Contact-resistance scope
 
@@ -1933,7 +2056,10 @@ forward PINN, and inverse-$K$ PINN still omit those explicit interfaces.
 - $G_c$ and $G_h$ connect exchanger nodes to fixed reservoirs.
 - $R$ remains module electrical resistance.
 
-The observation schema identifies modeled sensor locations, but it does not
+The conventional cold contact baseline infers one resistance from ideal
+same-model synthetic data. It does not calibrate either contact against
+hardware, and the hot contact has not been inferred. The observation schema
+identifies modeled sensor locations, but it does not
 yet represent physical sensor geometry, empirically calibrated noise, bias,
 lag, or missingness, random or value-dependent outages, automated calibration,
 sensor thermal loading, electrical contact resistance, or flowing-fluid
@@ -1960,11 +2086,13 @@ thermotwin/
 ├── forward_pinn.py
 ├── forward_pinn_report.py
 ├── inverse_thermal_conductance.py
+├── contact_resistance_inference.py
 ├── virtual_test_stand.py
 ├── measurement_noise.py
 ├── measurement_bias.py
 ├── measurement_lag.py
 ├── measurement_missingness.py
+├── CONTACT_RESISTANCE_EXPERIMENT.md
 ├── requirements-pinn.txt
 ├── README.md
 ├── README_detailed.md
@@ -1987,12 +2115,14 @@ tests/
 ├── test_measurement_noise.py
 ├── test_measurement_bias.py
 ├── test_measurement_lag.py
-└── test_measurement_missingness.py
+├── test_measurement_missingness.py
+└── test_contact_resistance_inference.py
 ```
 
-The core public API is re-exported from `thermotwin/__init__.py`. Optional
-PyTorch modules are imported directly so importing the core package does not
-require PyTorch.
+The core public API is re-exported from `thermotwin/__init__.py`. Executable
+inference modules are imported directly from their named modules so they can
+run cleanly with `python3 -m`. Optional PyTorch modules also remain direct
+imports so importing the core package does not require PyTorch.
 
 ---
 
@@ -2005,9 +2135,10 @@ The planned learning and implementation sequence is:
 2. Preserve the ideal virtual test-stand dataset as a reproducible baseline.
 3. Preserve the configurable downsampling, Gaussian-noise, fixed-bias,
    first-order-lag, and deterministic-missingness baselines.
-4. Split datasets by operating regime rather than by random time samples.
-5. Infer one contact resistance while holding $K$ and the other interface
-   parameters fixed.
+4. Preserve whole-regime splitting and the conventional one-contact recovery
+   baseline.
+5. Add noise, bias, lag, missing records, and restricted sensors one mechanism
+   at a time to the contact-resistance recovery.
 6. Compare inverse PINN recovery with conventional least squares.
 7. Quantify uncertainty and practical identifiability across repeated trials.
 8. Extend the learned model to time-varying current.
