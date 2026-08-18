@@ -23,6 +23,7 @@ The relevant files are:
 - `thermotwin/measurement_noise.py`: reproducible Gaussian temperature noise;
 - `thermotwin/measurement_bias.py`: fixed per-sensor temperature offsets;
 - `thermotwin/measurement_lag.py`: first-order dynamic sensor response;
+- `thermotwin/measurement_missingness.py`: deterministic sensor outages;
 - `tests/test_virtual_test_stand.py`: schema, timing, interpolation, current,
   and validation checks;
 - `tests/test_measurement_noise.py`: determinism, zero-noise, per-sensor, and
@@ -30,7 +31,9 @@ The relevant files are:
 - `tests/test_measurement_bias.py`: zero-bias, persistence, isolation, and
   composition checks;
 - `tests/test_measurement_lag.py`: time constants, dynamics, ordering, and
-  limiting-case checks; and
+  limiting-case checks;
+- `tests/test_measurement_missingness.py`: outage boundaries, record counts,
+  schema, ordering, and limiting-case checks; and
 - `thermotwin/README_detailed.md`: the full package-level explanation.
 
 Make predictions before running code. Include units in calculations. Preserve
@@ -487,10 +490,10 @@ schema, then explain what each protects.
 ## Block 8 — Explore and design observation-model extensions
 
 The ideal sampler already supports different measurement intervals, and the
-independent Gaussian temperature-noise, fixed-bias, and first-order sensor-lag
-layers are now implemented. Use these features to explore downsampling and
-measurement effects. Missing data remains a future effect that should stay
-separate until its assumptions are understood and reviewed.
+independent Gaussian temperature-noise, fixed-bias, first-order sensor-lag,
+and deterministic missing-observation layers are now implemented. Use these
+features to explore downsampling and measurement effects. Note 13 consolidates
+the four measurement imperfections and their complete transformation order.
 
 ### Exercise 29: Downsampling
 
@@ -748,8 +751,8 @@ help estimate sensor offsets.
 
 ### Checkpoint 6
 
-Ask Codex to review Exercises 41–46 before analyzing sensor lag or implementing
-missing observations.
+Ask Codex to review Exercises 41–46 before analyzing sensor lag and the
+combined measurement pipeline.
 
 ---
 
@@ -862,7 +865,8 @@ Propose an input that makes sensor lag observable.
 
 ### Checkpoint 7
 
-Ask Codex to review Exercises 47–53 before implementing missing observations.
+Ask Codex to review Exercises 47–53, then continue with the missing-observation
+exercises in `13_measurement_imperfections.md`.
 
 ---
 

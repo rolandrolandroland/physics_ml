@@ -154,8 +154,8 @@ print(result.dataset.observations[:4])
 
 The same seed reproduces the same readings. Different seeds create different
 synthetic trials. Fixed bias is available as a separate transformation below;
-the noise-only workflow does not add it. Lag, missing data, and
-current-measurement error are not yet included.
+the noise-only workflow does not add it. Lag and missingness are separate
+transformations below. Current-measurement error is not yet included.
 
 ## Fixed temperature bias
 
@@ -218,6 +218,41 @@ For the frozen cooling transient, the lagged cold-face reading remains warmer
 than the instantaneous face temperature. The difference peaks near 0.377 K
 and is about 0.058 K at 60 s. This output filter does not feed heat back into
 the thermal model and is not a calibrated physical sensor model.
+
+## Deterministic missing observations
+
+The [measurement_missingness.py](measurement_missingness.py) module represents
+known sensor outages by omitting unavailable long-form records. The generic
+baseline removes `cold_face_sensor` readings from 20 through 30 s, inclusive.
+It removes 11 of the original 244 records, leaving 50 cold-face readings and
+233 total records. All 61 measurement times remain because the other three
+sensors continue reporting.
+
+~~~python
+from thermotwin import run_missing_contact_reference_test_stand
+
+result = run_missing_contact_reference_test_stand()
+print(len(result.dataset.observations))  # 233
+print(result.missingness_model)
+~~~
+
+Missing readings are absent rows, not 0 K values, `NaN` values, or
+interpolated replacements. The complete synthetic measurement workflow uses:
+
+~~~text
+truth -> lag -> sampling -> bias -> noise -> remove unavailable readings
+~~~
+
+The sensor's lag state continues evolving during the communication outage.
+Missingness changes neither the hidden thermal trajectory nor any retained
+record. An empty outage configuration exactly reproduces the complete input
+dataset. This first deterministic outage is a reproducible learning case, not
+a model of random or temperature-dependent hardware failure.
+
+Consolidated physics, code, validation, and experiment-design exercises for
+sampling, temperature noise, fixed bias, sensor lag, and missing observations
+are in
+[notes/13_measurement_imperfections.md](notes/13_measurement_imperfections.md).
 
 ## First forward PINN
 

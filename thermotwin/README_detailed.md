@@ -21,11 +21,12 @@ foundation of that larger goal. It contains:
 10. Reproducible Gaussian temperature noise with per-sensor configuration.
 11. Fixed per-sensor temperature bias and a combined noise-plus-bias workflow.
 12. First-order per-sensor dynamic lag applied before output sampling.
-13. A forward physics-informed neural network, or PINN.
-14. An RK4-versus-PINN comparison report.
-15. A first inverse PINN that infers the module thermal conductance $K$ from
+13. Deterministic per-sensor missing-observation intervals.
+14. A forward physics-informed neural network, or PINN.
+15. An RK4-versus-PINN comparison report.
+16. A first inverse PINN that infers the module thermal conductance $K$ from
    sparse synthetic temperature observations.
-16. Unit, sign, energy, sampling, measurement, numerical, PINN, and
+17. Unit, sign, energy, sampling, measurement, numerical, PINN, and
     identifiability tests.
 
 The package does **not** yet represent a hardware-validated digital twin. Its
@@ -62,7 +63,7 @@ standard library. Run all current ThermoTwin tests with:
 python3 -m unittest discover -s tests
 ```
 
-The current suite contains 123 focused tests. Optional learned-model and report
+The current suite contains 140 focused tests. Optional learned-model and report
 tests are skipped
 when their optional dependencies are not installed.
 
@@ -1169,6 +1170,116 @@ print(all_effects.bias_model)
 print(all_effects.noise_model)
 ~~~
 
+The consolidated measurement-imperfection exercises are in
+[notes/13_measurement_imperfections.md](notes/13_measurement_imperfections.md).
+They cover sampling, noise, bias, lag, transformation order, and missing
+observations.
+
+### 9.16 Deterministic missing observations
+
+A missing observation means that no usable sensor record is available. It is
+not a temperature of 0 K, and the current implementation does not insert a
+`NaN` or invent an interpolated replacement. Instead, the unavailable
+long-form row is omitted.
+
+`TemperatureSensorOutage` defines one inclusive interval using:
+
+- a nonempty sensor name;
+- a finite, nonnegative start time; and
+- a finite, nonnegative end time that does not precede the start.
+
+`DeterministicTemperatureMissingness` stores zero or more outage intervals.
+Overlapping inclusive intervals for the same sensor are rejected because they
+are redundant and make provenance ambiguous. Outages for different sensors
+may overlap. Named sensors are checked against the input dataset when the
+transformation is applied.
+
+Let $\mathcal O_s$ be the outage intervals configured for sensor $s$. A record
+at time $t_k$ is retained only if
+
+$$
+t_k\notin[o^{\mathrm{start}},o^{\mathrm{end}}]
+\quad\text{for every }o\in\mathcal O_s.
+$$
+
+The interval endpoints are inclusive. Comparisons use a small floating-point
+tolerance so a nominal boundary such as 0.3 s behaves correctly even when a
+stored floating-point time is represented as 0.30000000000000004 s.
+
+The generic learning baseline is a communication outage for
+`cold_face_sensor` from 20 through 30 s. With 1 s measurements, the removed
+times are
+
+~~~text
+20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30 s
+~~~
+
+Therefore:
+
+| Quantity | Complete data | After outage |
+| --- | ---: | ---: |
+| Unique experiment times | 61 | 61 |
+| Cold-face records | 61 | 50 |
+| Each other sensor's records | 61 | 61 |
+| Total records | 244 | 233 |
+
+The full dataset retains all 61 times because at least three sensors still
+report during the outage. The cold-face sensor remains in sensor metadata even
+though its observation history is shorter. This long-form representation does
+not require a rectangular sensor-by-time table.
+
+`apply_deterministic_temperature_missingness` returns a new dataset containing
+the original retained observation objects. It preserves sensor definitions,
+sampling interval, and units. Zero outage intervals are the exact no-effect
+limit. An outage outside the experiment also has no effect. Removing every
+record is rejected because `ObservationDataset` must remain nonempty.
+
+Missingness is an observation transformation only. It does not change the
+four-node thermal trajectory, contact heat transfer, current schedule, or the
+unavailable sensor's internal lag state. In the complete reference workflow,
+the order is:
+
+~~~text
+dense node truth
+    -> first-order sensor lag
+    -> output sampling
+    -> fixed sensor bias
+    -> independent Gaussian noise
+    -> deterministic record removal
+~~~
+
+Noise is generated before the unavailable rows are removed. This preserves
+the seeded noise values of later retained records and represents a sensor that
+formed readings but failed to transmit selected records. A sensor that was
+powered off and did not update its state would require a different model.
+
+Minimal missing-only use:
+
+~~~python
+from thermotwin import run_missing_contact_reference_test_stand
+
+missing_only = run_missing_contact_reference_test_stand()
+print(len(missing_only.dataset.observations))
+print(missing_only.missingness_model)
+~~~
+
+Complete measurement-pipeline use:
+
+~~~python
+from thermotwin import run_incomplete_contact_reference_test_stand
+
+result = run_incomplete_contact_reference_test_stand()
+print(result.lag_model)
+print(result.bias_model)
+print(result.noise_model)
+print(result.missingness_model)
+print(len(result.dataset.observations))
+~~~
+
+This first model describes a known deterministic outage. It does not yet
+represent random packet loss, value-dependent failure, sensor-health states,
+imputation, or a calibrated hardware missingness mechanism.
+
 ---
 
 ## 10. Forward physics-informed neural network
@@ -1675,6 +1786,28 @@ Checks:
 - dense lag evaluation before output downsampling; and
 - lag-before-bias/noise ordering with all configurations retained.
 
+### 12.17 `test_measurement_missingness.py`
+
+Checks:
+
+- the frozen inclusive 20–30 s cold-face outage;
+- rejection of empty names, invalid times, malformed configurations, and
+  overlapping same-sensor intervals;
+- support for simultaneous outages of different sensors;
+- zero outages and out-of-experiment outages as exact no-effect limits;
+- rejection of outages for unknown sensors;
+- inclusive boundaries with floating-point tolerance;
+- the expected 50 cold-face, 233 total, and 61 unique-time counts;
+- exact preservation of other sensor histories, retained records, metadata,
+  units, and the immutable input;
+- support for complete loss of one sensor while other sensors remain;
+- rejection of a configuration that removes every dataset record;
+- correct behavior at another output sampling interval;
+- lag-state continuation through the unavailable interval;
+- exact lag-before-bias-before-noise-before-missingness composition;
+- retention of all four measurement-model configurations; and
+- the effect of applying seeded noise in the wrong order.
+
 ---
 
 ## 13. Validation levels and what they mean
@@ -1739,7 +1872,15 @@ ordering, and composition with other synthetic effects. They do not identify
 a real sensor time constant or validate the assumption that the sensor has no
 thermal influence on the measured node.
 
-### 13.10 Hardware validation
+### 13.10 Synthetic missing-observation validation
+
+The missingness tests verify inclusive deterministic outages, exact retained
+records, schema preservation, limiting cases, reference counts, and complete
+pipeline ordering. They do not establish why real records go missing, whether
+availability depends on an unobserved temperature, or whether the frozen
+outage resembles hardware communication failures.
+
+### 13.11 Hardware validation
 
 Hardware validation will require measured temperatures, currents, voltages,
 sensor timing and locations, calibration information, contact modeling, and a
@@ -1776,6 +1917,9 @@ The current results depend on these assumptions:
 16. The first lag model uses a 2 s cold-face sensor time constant, initializes
     the sensor at the first node temperature, and does not feed back into the
     thermal state equations.
+17. The first missingness model omits cold-face records from 20 through 30 s,
+    inclusively, after noise generation. It represents failed reporting while
+    the sensor and thermal model continue evolving.
 
 ### 14.1 Contact-resistance scope
 
@@ -1791,9 +1935,9 @@ forward PINN, and inverse-$K$ PINN still omit those explicit interfaces.
 
 The observation schema identifies modeled sensor locations, but it does not
 yet represent physical sensor geometry, empirically calibrated noise, bias,
-or lag, missingness, automated calibration, sensor thermal loading,
-electrical contact resistance, or flowing-fluid states. Neither thermal
-contact resistance has yet been inferred from data.
+lag, or missingness, random or value-dependent outages, automated calibration,
+sensor thermal loading, electrical contact resistance, or flowing-fluid
+states. Neither thermal contact resistance has yet been inferred from data.
 
 ---
 
@@ -1820,6 +1964,7 @@ thermotwin/
 ├── measurement_noise.py
 ├── measurement_bias.py
 ├── measurement_lag.py
+├── measurement_missingness.py
 ├── requirements-pinn.txt
 ├── README.md
 ├── README_detailed.md
@@ -1841,7 +1986,8 @@ tests/
 ├── test_virtual_test_stand.py
 ├── test_measurement_noise.py
 ├── test_measurement_bias.py
-└── test_measurement_lag.py
+├── test_measurement_lag.py
+└── test_measurement_missingness.py
 ```
 
 The core public API is re-exported from `thermotwin/__init__.py`. Optional
@@ -1857,8 +2003,8 @@ The planned learning and implementation sequence is:
 1. Keep both conventional topologies, reports, and the learned baseline
    reproducible.
 2. Preserve the ideal virtual test-stand dataset as a reproducible baseline.
-3. Preserve the configurable downsampling, Gaussian-noise, fixed-bias, and
-   first-order-lag baselines, then add missing observations.
+3. Preserve the configurable downsampling, Gaussian-noise, fixed-bias,
+   first-order-lag, and deterministic-missingness baselines.
 4. Split datasets by operating regime rather than by random time samples.
 5. Infer one contact resistance while holding $K$ and the other interface
    parameters fixed.
