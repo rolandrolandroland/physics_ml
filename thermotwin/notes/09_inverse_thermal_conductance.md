@@ -388,7 +388,7 @@ The optimizer does not update $K$ directly. It updates
 $k_{\mathrm{raw}}$, while the physical value is
 
 $$
-K=\operatorname{softplus}(k_{\mathrm{raw}})
+K=\mathrm{softplus}(k_{\mathrm{raw}})
 =\log(1+e^{k_{\mathrm{raw}}}).
 $$
 
@@ -477,15 +477,15 @@ The physics loss is
 
 $$
 \mathcal L_{\mathrm{physics}}
-=\operatorname{mean}\left[\left(\frac{r_c}{s_r}\right)^2\right]
-+\operatorname{mean}\left[\left(\frac{r_h}{s_r}\right)^2\right],
+=\mathrm{mean}\left[\left(\frac{r_c}{s_r}\right)^2\right]
++\mathrm{mean}\left[\left(\frac{r_h}{s_r}\right)^2\right],
 $$
 
 where $s_r=0.1$ K/s. The observation loss is
 
 $$
 \mathcal L_{\mathrm{obs}}
-=\operatorname{mean}\left[
+=\mathrm{mean}\left[
 \left(\frac{T_{\mathrm{network}}-T_{\mathrm{observed}}}{s_T}\right)^2
 \right],
 $$

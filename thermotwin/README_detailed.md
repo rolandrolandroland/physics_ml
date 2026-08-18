@@ -1162,8 +1162,8 @@ The forward loss is
 
 $$
 \mathcal L_{\mathrm{forward}}
-=\operatorname{mean}(r_c^2)
-+\operatorname{mean}(r_h^2).
+=\mathrm{mean}(r_c^2)
++\mathrm{mean}(r_h^2).
 $$
 
 RK4 temperatures are not used in training. This separation makes RK4 a genuine
@@ -1278,7 +1278,7 @@ The optimizer updates an unconstrained raw scalar $k_{\mathrm{raw}}$. The
 physical conductance is
 
 $$
-K=\operatorname{softplus}(k_{\mathrm{raw}})
+K=\mathrm{softplus}(k_{\mathrm{raw}})
 =\log\left(1+e^{k_{\mathrm{raw}}}\right).
 $$
 
@@ -1292,15 +1292,15 @@ The residual component is normalized by 0.1 K/s:
 
 $$
 \mathcal L_{\mathrm{physics}}
-=\operatorname{mean}\left[\left(\frac{r_c}{0.1\ \mathrm{K/s}}\right)^2\right]
-+\operatorname{mean}\left[\left(\frac{r_h}{0.1\ \mathrm{K/s}}\right)^2\right].
+=\mathrm{mean}\left[\left(\frac{r_c}{0.1\ \mathrm{K/s}}\right)^2\right]
++\mathrm{mean}\left[\left(\frac{r_h}{0.1\ \mathrm{K/s}}\right)^2\right].
 $$
 
 The observation component is normalized by 1 K:
 
 $$
 \mathcal L_{\mathrm{obs}}
-=\operatorname{mean}\left[
+=\mathrm{mean}\left[
 \left(\frac{T_{\mathrm{network}}-T_{\mathrm{observed}}}{1\ \mathrm{K}}\right)^2
 \right].
 $$

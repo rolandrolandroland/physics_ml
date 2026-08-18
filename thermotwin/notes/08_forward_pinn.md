@@ -301,7 +301,7 @@ The training loss is
 
 $$
 \mathcal L
-=\operatorname{mean}(r_c^2)+\operatorname{mean}(r_h^2).
+=\mathrm{mean}(r_c^2)+\mathrm{mean}(r_h^2).
 $$
 
 1. Why are the residuals squared?
