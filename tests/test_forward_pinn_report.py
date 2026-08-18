@@ -9,6 +9,7 @@ try:
 
     from thermotwin.forward_pinn import ForwardPINN, PINNTrainingResult
     from thermotwin.forward_pinn_report import (
+        DEFAULT_FORWARD_PINN_REPORT_PATH,
         build_forward_pinn_report_data,
         save_forward_pinn_comparison_report,
     )
@@ -36,6 +37,20 @@ class ForwardPINNReportTests(unittest.TestCase):
             model=model,
             loss_history=(1.0, 0.5),
             device="cpu",
+        )
+
+    def test_default_report_path_uses_package_figures_directory(self):
+        self.assertEqual(
+            DEFAULT_FORWARD_PINN_REPORT_PATH.name,
+            "forward_pinn_comparison.png",
+        )
+        self.assertEqual(
+            DEFAULT_FORWARD_PINN_REPORT_PATH.parent.name,
+            "figures",
+        )
+        self.assertEqual(
+            DEFAULT_FORWARD_PINN_REPORT_PATH.parent.parent.name,
+            "thermotwin",
         )
 
     def test_report_data_are_aligned_and_initial_error_is_zero(self):

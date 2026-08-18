@@ -355,8 +355,7 @@ Then answer:
 Generate the full comparison report with:
 
 ```bash
-python3 -m thermotwin.forward_pinn_report \
-  --output forward_pinn_comparison.png
+python3 -m thermotwin.forward_pinn_report
 ```
 
 Inspect all four panels. Identify where the largest temperature error occurs,

@@ -13,6 +13,7 @@ from .experiments import (
     constant_current_reference_experiment,
     run_two_node_experiment,
 )
+from .figure_paths import default_figure_path
 from .forward_pinn import (
     ForwardPINNConfig,
     PINNTrainingResult,
@@ -20,6 +21,11 @@ from .forward_pinn import (
     physics_residuals,
     predict_trajectory,
     train_forward_pinn,
+)
+
+
+DEFAULT_FORWARD_PINN_REPORT_PATH = default_figure_path(
+    "forward_pinn_comparison.png"
 )
 
 
@@ -241,8 +247,11 @@ def main() -> None:
     )
     parser.add_argument(
         "--output",
-        default="forward_pinn_comparison.png",
-        help="destination PNG path",
+        default=DEFAULT_FORWARD_PINN_REPORT_PATH,
+        help=(
+            "destination PNG path (default: "
+            "thermotwin/figures/forward_pinn_comparison.png)"
+        ),
     )
     parser.add_argument(
         "--device",

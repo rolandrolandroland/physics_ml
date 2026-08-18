@@ -17,6 +17,8 @@ choice. They are intentionally separate from the package README.
 | [07 — Time-varying current](07_time_varying_current.md) | Understand current schedules, switching physics, discontinuities, and pulse tests | Not started |
 | [08 — Forward PINN](08_forward_pinn.md) | Understand the forward PINN physics, code, training loss, and RK4 validation | Not started |
 | [09 — Inverse thermal conductance](09_inverse_thermal_conductance.md) | Understand sparse observations, trainable $K$, inverse losses, identifiability, and validation | Not started |
+| [10 — Contact-aware transient](10_contact_aware_transient.md) | Understand modular topology, contact heat signs, four-node balances, RK4, and limiting cases | Not started |
+| [11 — Contact reference and diagnostics](11_contact_reference_diagnostics.md) | Understand the frozen contact experiment, derived histories, energy closure, COP definitions, topology comparison, and resistance sweep | Not started |
 
 Suggested statuses are `Not started`, `Draft`, `Revising`, and `Reviewed`.
 

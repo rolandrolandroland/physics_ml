@@ -11,15 +11,17 @@ foundation of that larger goal. It contains:
 
 1. A constant-property thermoelectric model.
 2. A two-node transient thermal model.
-3. Constant, step, and pulse current inputs.
-4. A dependency-free RK4 reference solver.
-5. Derived heat, voltage, power, and COP histories.
-6. A reproducible 1 A reference experiment.
-7. A forward physics-informed neural network, or PINN.
-8. An RK4-versus-PINN comparison report.
-9. A first inverse PINN that infers the module thermal conductance $K$ from
+3. A separate four-node model with explicit thermal contact resistances.
+4. Constant, step, and pulse current inputs.
+5. Dependency-free RK4 reference solvers.
+6. Derived heat, voltage, power, COP, contact, and energy histories.
+7. Reproducible 1 A two-node and contact-aware reference experiments.
+8. A contact-resistance sweep and two-topology comparison report.
+9. A forward physics-informed neural network, or PINN.
+10. An RK4-versus-PINN comparison report.
+11. A first inverse PINN that infers the module thermal conductance $K$ from
    sparse synthetic temperature observations.
-10. Unit, sign, energy, numerical, PINN, and identifiability tests.
+12. Unit, sign, energy, numerical, PINN, and identifiability tests.
 
 The package does **not** yet represent a hardware-validated digital twin. Its
 learned models are currently validated against the conventional equations that
@@ -55,13 +57,14 @@ standard library. Run all current ThermoTwin tests with:
 python3 -m unittest discover -s tests
 ```
 
-The current suite contains 49 focused tests. The PINN-related tests are skipped
+The current suite contains 75 focused tests. Optional learned-model and report
+tests are skipped
 when their optional dependencies are not installed.
 
 ### 2.2 Install the optional learned-model dependencies
 
-The forward PINN, inverse PINN, and comparison report require PyTorch. The
-report also requires Matplotlib:
+The forward and inverse PINNs require PyTorch. The contact and PINN reports
+require Matplotlib:
 
 ```bash
 python3 -m pip install -r thermotwin/requirements-pinn.txt
@@ -78,9 +81,14 @@ python3 -m thermotwin.forward_pinn
 Generate the four-panel forward comparison report:
 
 ```bash
-python3 -m thermotwin.forward_pinn_report \
-  --output forward_pinn_comparison.png
+python3 -m thermotwin.forward_pinn_report
 ```
+
+Generate the contact-aware comparison and resistance sweep:
+
+~~~bash
+python3 -m thermotwin.contact_report
+~~~
 
 Run the first inverse problem and infer $K$:
 
@@ -88,15 +96,18 @@ Run the first inverse problem and infer $K$:
 python3 -m thermotwin.inverse_thermal_conductance
 ```
 
-Generated PNG reports are outputs rather than source code. Avoid staging them
-unless there is a deliberate reason to version a particular result.
+Both report commands write to `thermotwin/figures/` by default. The shared
+location is defined in `figure_paths.py`, created automatically when needed,
+and ignored by Git because generated PNG reports are outputs rather than source
+code. Pass `--output PATH` to either command when a deliberate alternate
+location is required.
 
 ---
 
 ## 3. The physical picture
 
-The model treats the heat pump and its surroundings as two lumped thermal
-nodes connected by one thermoelectric module:
+The reduced model treats the heat pump and its surroundings as two lumped
+thermal nodes connected by one thermoelectric module:
 
 ```text
 cold reservoir                                  hot reservoir
@@ -113,6 +124,19 @@ The cold and hot nodes store thermal energy. The thermoelectric module is
 treated as quasi-steady: it transports and generates heat, but it does not
 store energy internally. Reservoirs exchange heat with their corresponding
 nodes through effective conductances $G_c$ and $G_h$.
+
+The contact-aware model separates the TE faces from the exchanger nodes:
+
+~~~text
+cold reservoir -> cold exchanger -> cold TE face
+                      contact Rc        |
+                                        | thermoelectric module
+                      contact Rh        |
+hot reservoir  <- hot exchanger  <- hot TE face
+~~~
+
+This adds two temperatures and makes both interface drops observable in the
+simulation. The shared $Q_c$ and $Q_h$ equations use the TE-face temperatures.
 
 The word **external** means external to the modeled thermoelectric module and
 two-node heat-transfer paths. For example, an electronic component heating the
@@ -675,6 +699,171 @@ result = run_two_node_experiment(experiment)
 
 ---
 
+### 9.11 Contact-aware four-node model
+
+The original two-node solver remains available as a reduced model without
+explicit contacts. The separate
+[contact_transient.py](contact_transient.py) module adds four dynamic
+temperatures:
+
+- cold thermoelectric face $T_c$;
+- hot thermoelectric face $T_h$;
+- cold heat exchanger $T_{x,c}$; and
+- hot heat exchanger $T_{x,h}$.
+
+The cold contact heat is positive from the cold exchanger to the cold face,
+and the hot contact heat is positive from the hot face to the hot exchanger:
+
+$$
+\dot q_{\mathrm{contact},c}
+=\frac{T_{x,c}-T_c}{R_{\mathrm{contact},c}},
+$$
+
+$$
+\dot q_{\mathrm{contact},h}
+=\frac{T_h-T_{x,h}}{R_{\mathrm{contact},h}}.
+$$
+
+The implemented energy balances are
+
+$$
+C_c\frac{dT_c}{dt}
+=\dot q_{\mathrm{contact},c}-Q_c,
+$$
+
+$$
+C_h\frac{dT_h}{dt}
+=Q_h-\dot q_{\mathrm{contact},h},
+$$
+
+$$
+C_{x,c}\frac{dT_{x,c}}{dt}
+=G_c(T_{c,\infty}-T_{x,c})
++\dot q_{c,\mathrm{ext}}
+-\dot q_{\mathrm{contact},c},
+$$
+
+$$
+C_{x,h}\frac{dT_{x,h}}{dt}
+=G_h(T_{h,\infty}-T_{x,h})
++\dot q_{h,\mathrm{ext}}
++\dot q_{\mathrm{contact},h}.
+$$
+
+Adding all four equations cancels both contact terms. Using
+$Q_h-Q_c=VI$, the total stored-energy rate is
+
+$$
+\begin{aligned}
+\frac{dE_{\mathrm{stored}}}{dt}
+={}&G_c(T_{c,\infty}-T_{x,c})
++G_h(T_{h,\infty}-T_{x,h})\\
+&+\dot q_{c,\mathrm{ext}}+\dot q_{h,\mathrm{ext}}+VI.
+\end{aligned}
+$$
+
+Contact resistance therefore changes internal temperature drops and heat
+delivery without creating or destroying energy. The baseline assigns separate
+thermal capacitances to all four nodes and applies external loads at the
+exchangers.
+
+The four_node_contact_rhs function evaluates the four instantaneous rates.
+The integrate_four_node_contact function uses the same RK4 and exact
+current-transition behavior as the two-node integrator. Contact resistances
+must be finite and positive. To omit contacts, use the two-node model rather
+than setting a resistance to zero.
+
+The [contact_experiments.py](contact_experiments.py) module freezes a generic
+comparison case with:
+
+| Quantity | Reference value |
+| --- | ---: |
+| Current | 1 A |
+| Duration | 60 s |
+| Time step | 0.1 s |
+| Initial and reservoir temperatures | 300 K |
+| Cold face and exchanger capacitances | 50, 50 J/K |
+| Hot face and exchanger capacitances | 100, 100 J/K |
+| Cold and hot contact resistances | 0.25, 0.25 K/W |
+| External heat inputs | 0 W |
+
+The values are a controlled generic baseline, not hardware-calibrated
+properties. The paired capacitances preserve the 100 J/K cold and 200 J/K hot
+totals from the reduced reference case.
+
+The [contact_diagnostics.py](contact_diagnostics.py) module evaluates aligned
+histories of:
+
+- current;
+- face and exchanger temperature differences;
+- both face-to-exchanger contact drops;
+- both contact heat rates;
+- $Q_c$, $Q_h$, voltage, and electrical power;
+- module cooling COP, $Q_c/(VI)$;
+- exchanger-delivered cooling COP,
+  $\dot q_{\mathrm{contact},c}/(VI)$; and
+- stored-energy rate, external-energy rate, and their closure residual.
+
+Module and exchanger-delivered COP differ during a transient because the cold
+face has thermal capacitance:
+
+$$
+\dot q_{\mathrm{contact},c}-Q_c
+=C_c\frac{dT_c}{dt}.
+$$
+
+The 60 s reference gives approximately:
+
+| Output | Value |
+| --- | ---: |
+| Final cold TE face | 294.795190 K |
+| Final cold exchanger | 296.735891 K |
+| Final hot TE face | 303.959316 K |
+| Final hot exchanger | 301.743400 K |
+| Final cold contact drop | 1.940701 K |
+| Final hot contact drop | 2.215916 K |
+| Final cold contact heat | 7.762803 W |
+| Final hot contact heat | 8.863664 W |
+| Final module cooling COP | 3.725357 |
+| Final exchanger-delivered cooling COP | 3.157914 |
+| Maximum energy-closure residual | below $5\times10^{-15}$ W |
+
+The [contact_report.py](contact_report.py) module compares the four temperature
+histories against the reduced two-node trajectory, plots both contact drops,
+compares module and delivered heat rates, and sweeps equal cold/hot contact
+resistances through 0.1, 0.25, 0.5, and 1.0 K/W.
+
+For this fixed 60 s experiment, increasing resistance increases both contact
+drops, decreases heat removed from the cold exchanger, makes the TE-face
+temperatures more extreme, and leaves the exchanger temperatures closer to the
+reservoir. These are results for the stated controlled conditions, not a proof
+of universal monotonic behavior.
+
+Minimal use:
+
+~~~python
+from thermotwin import (
+    constant_current_contact_reference_experiment,
+    run_four_node_contact_experiment,
+)
+
+experiment = constant_current_contact_reference_experiment()
+result = run_four_node_contact_experiment(experiment)
+
+print(result.trajectory.cold_face[-1])
+print(result.trajectory.cold_exchanger[-1])
+print(result.diagnostics.cold_contact_heat[-1])
+print(result.diagnostics.exchanger_cooling_cop[-1])
+~~~
+
+The four-node derivation exercises are in
+[notes/10_contact_aware_transient.md](notes/10_contact_aware_transient.md).
+The frozen experiment, diagnostics, energy-closure, COP, topology-comparison,
+and sweep exercises are in
+[notes/11_contact_reference_diagnostics.md](notes/11_contact_reference_diagnostics.md).
+
+---
+
 ## 10. Forward physics-informed neural network
 
 The forward PINN lives in [`forward_pinn.py`](forward_pinn.py). It solves the
@@ -1073,6 +1262,46 @@ Checks:
 - non-identifiability when $T_h-T_c$ is always zero; and
 - recovery of $K$ from sparse noise-free data.
 
+### 12.9 `test_contact_transient.py`
+
+Checks:
+
+- contact heat signs and invalid resistance values;
+- the complete four-rate hand calculation;
+- whole-system energy closure;
+- zero-current equilibrium and contact-only conservation;
+- Peltier reversal under current reversal;
+- RK4 final-step and current-transition handling;
+- step-size refinement; and
+- convergence toward the two-node aggregate as contact resistance decreases.
+
+### 12.10 test_contact_diagnostics.py
+
+Checks:
+
+- initial contact and thermoelectric hand values;
+- alignment of every derived history;
+- module energy identity and whole-system energy closure;
+- undefined module and delivered COP at zero power; and
+- rejection of malformed trajectories.
+
+### 12.11 test_contact_experiments.py
+
+Checks:
+
+- the exact frozen generic contact-reference inputs;
+- initial predictions and 60 s regression values; and
+- the transient distinction between module and delivered heat.
+
+### 12.12 test_contact_report.py
+
+Checks:
+
+- report-history and sweep alignment;
+- larger contact drops and lower cold delivered heat in the stated sweep;
+- rejection of invalid sweep resistances; and
+- creation of a valid PNG report.
+
 ---
 
 ## 13. Validation levels and what they mean
@@ -1092,8 +1321,9 @@ current, insulated energy conservation, or absent identifiability.
 
 ### 13.3 Numerical solver cross-checks
 
-RK4 step refinement and algebraic steady-state comparisons test the numerical
-implementation of the conventional equations.
+RK4 step refinement, contact-model reduction toward the two-node aggregate,
+and algebraic steady-state comparisons test the numerical implementation of
+the conventional equations.
 
 ### 13.4 Forward PINN versus RK4
 
@@ -1121,9 +1351,11 @@ yet been implemented.
 The current results depend on these assumptions:
 
 1. $\alpha$, $R$, and $K$ are constant with temperature and current.
-2. The thermoelectric module is one lumped block.
-3. The cold and hot nodes each have one uniform temperature.
-4. The module stores no internal thermal energy.
+2. The thermoelectric module uses quasi-steady face heat-rate relations.
+3. The two-node model uses two uniform temperatures; the contact-aware model
+   uses four uniform face and exchanger temperatures.
+4. Thermal energy is stored only in the selected lumped nodes, with no
+   internal spatial temperature field inside the module.
 5. Joule heat divides equally between the two faces.
 6. Thomson heating is neglected.
 7. Radiation is not modeled explicitly.
@@ -1134,19 +1366,21 @@ The current results depend on these assumptions:
 12. The first inverse problem has one unknown parameter and noise-free paired
     temperature observations.
 
-### 14.1 Contact resistance is not explicit
+### 14.1 Contact-resistance scope
 
-The current model has no separate thermal contact-resistance states or
-parameters between the module faces, sensors, nodes, and reservoirs.
+The conventional four-node model includes separate cold and hot thermal
+contact resistances between TE faces and heat exchangers. The two-node solver,
+forward PINN, and inverse-$K$ PINN still omit those explicit interfaces.
 
-- $K$ represents internal parasitic thermal conductance through the module.
-- $G_c$ and $G_h$ represent effective node-to-reservoir conductances.
-- $R$ represents module electrical resistance.
+- $K$ is internal parasitic thermal conductance through the module.
+- $R_{\mathrm{contact},c}$ and $R_{\mathrm{contact},h}$ are interface thermal
+  resistances in K/W.
+- $G_c$ and $G_h$ connect exchanger nodes to fixed reservoirs.
+- $R$ remains module electrical resistance.
 
-Fitted effective values could absorb some unmodeled contact effects, but that
-does not make contact resistance identifiable or physically separated. Before
-using hardware data, module-face temperatures, sensor locations, interfaces,
-and contact resistances must be reconsidered explicitly.
+The model does not yet include sensor location or lag, electrical contact
+resistance, or flowing-fluid states. Neither contact resistance has yet been
+inferred from data.
 
 ---
 
@@ -1158,6 +1392,12 @@ thermotwin/
 ├── thermoelectric.py
 ├── controls.py
 ├── transient.py
+├── contact_transient.py
+├── contact_diagnostics.py
+├── contact_experiments.py
+├── contact_report.py
+├── figure_paths.py
+├── figures/                 # generated and ignored by Git
 ├── diagnostics.py
 ├── experiments.py
 ├── forward_pinn.py
@@ -1172,6 +1412,10 @@ tests/
 ├── test_thermoelectric.py
 ├── test_controls.py
 ├── test_transient.py
+├── test_contact_transient.py
+├── test_contact_diagnostics.py
+├── test_contact_experiments.py
+├── test_contact_report.py
 ├── test_diagnostics.py
 ├── test_experiments.py
 ├── test_forward_pinn.py
@@ -1189,19 +1433,20 @@ require PyTorch.
 
 The planned learning and implementation sequence is:
 
-1. Keep the conventional solver and learned baseline reproducible.
-2. Vary observation spacing for $K$ inference.
-3. Add controlled synthetic measurement noise.
-4. Repeat inference across random seeds and initial guesses.
-5. Quantify parameter uncertainty and practical identifiability.
-6. Compare which experiments best identify $K$, $R$, and $\alpha$.
-7. Decide how contact resistance and sensor locations enter the physical model.
+1. Keep both conventional topologies, reports, and the learned baseline
+   reproducible.
+2. Define the virtual test-stand dataset schema and observation model.
+3. Add configurable noise, bias, lag, downsampling, and missing observations.
+4. Split datasets by operating regime rather than by random time samples.
+5. Infer one contact resistance while holding $K$ and the other interface
+   parameters fixed.
+6. Compare inverse PINN recovery with conventional least squares.
+7. Quantify uncertainty and practical identifiability across repeated trials.
 8. Extend the learned model to time-varying current.
 9. Compare continuous and pulsed control strategies.
-10. Select the next experiment using predicted information gain or another
-    explicit experiment-selection criterion.
-11. Validate against real hardware data only after measurement definitions and
-    model interfaces are agreed.
+10. Rank candidate experiments by sensitivity or predicted information gain.
+11. Validate against hardware only after measurement definitions, safety
+    limits, sensor locations, and fluid interfaces are agreed.
 
 Both READMEs should be updated as each milestone changes package behavior. The
 concise README should remain quick to scan; this detailed README should explain

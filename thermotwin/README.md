@@ -61,6 +61,51 @@ RK4 step. `run_two_node_experiment` returns both the temperature trajectory and
 its derived diagnostics so learned and conventional results use identical
 inputs.
 
+## Contact-aware four-node model
+
+The separate [contact_transient.py](contact_transient.py) module adds cold and
+hot thermoelectric-face nodes, cold and hot heat-exchanger nodes, and one
+thermal contact resistance on each side. Contact heat is
+
+$$
+\dot q_{\mathrm{contact},c}
+=\frac{T_{x,c}-T_c}{R_{\mathrm{contact},c}},
+\qquad
+\dot q_{\mathrm{contact},h}
+=\frac{T_h-T_{x,h}}{R_{\mathrm{contact},h}}.
+$$
+
+The four balances store energy separately in both faces and both exchangers.
+The thermoelectric heat rates use the face temperatures; fixed reservoirs and
+external loads act on the exchanger nodes. The integrate_four_node_contact
+function supports the same scalar, step, and pulse current inputs as the
+two-node integrator.
+
+The original two-node API remains unchanged and is the reduced model to use
+when contacts are intentionally omitted or lumped. Do not represent that
+choice by passing zero contact resistance to the four-node equations.
+
+The model derivation and code exercises are in
+[notes/10_contact_aware_transient.md](notes/10_contact_aware_transient.md).
+Exercises for the frozen experiment, diagnostics, COP definitions, energy
+checks, comparison, and sweep are in
+[notes/11_contact_reference_diagnostics.md](notes/11_contact_reference_diagnostics.md).
+
+The frozen contact reference uses 1 A for 60 s, equal 0.25 K/W contacts,
+50+50 J/K cold capacitance, and 100+100 J/K hot capacitance. It produces
+aligned histories of both contact drops and heat rates, $Q_c$, $Q_h$, voltage,
+power, module COP, exchanger-delivered COP, and whole-system energy closure.
+
+Generate the two-node comparison and symmetric contact-resistance sweep with:
+
+~~~bash
+python3 -m thermotwin.contact_report
+~~~
+
+By default, generated reports are written under `thermotwin/figures/`. That
+directory is ignored by Git because the figures can be reproduced from the
+committed code. Pass `--output PATH` to override the location deliberately.
+
 ## First forward PINN
 
 The optional `thermotwin.forward_pinn` module contains a small PyTorch network
@@ -86,8 +131,7 @@ Generate a four-panel comparison of the RK4 and PINN trajectories, pointwise
 temperature errors, physics residuals, and training loss with:
 
 ```bash
-python3 -m thermotwin.forward_pinn_report \
-  --output forward_pinn_comparison.png
+python3 -m thermotwin.forward_pinn_report
 ```
 
 The core solver remains independent of PyTorch and `pinn_heat`.
