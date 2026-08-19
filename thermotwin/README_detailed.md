@@ -37,12 +37,14 @@ foundation of that larger goal. It contains:
     current, with exact temperature continuity at current switches.
 25. A piecewise inverse PINN that infers one shared cold contact resistance
     from the established training pulse.
-26. RK4-versus-PINN comparison reports for the learned topologies.
-27. A first inverse PINN that infers the module thermal conductance $K$ from
+26. A one-command PINN showcase combining physics-only prediction, inverse
+    calibration, withheld-state validation, and unseen-control transfer.
+27. RK4-versus-PINN comparison reports for the learned topologies.
+28. A first inverse PINN that infers the module thermal conductance $K$ from
    sparse synthetic temperature observations.
-28. A smooth four-state inverse PINN that infers the cold contact resistance and
+29. A smooth four-state inverse PINN that infers the cold contact resistance and
     transfers it to unseen pulse regimes.
-29. Unit, sign, energy, sampling, measurement, numerical, PINN, and
+30. Unit, sign, energy, sampling, measurement, numerical, PINN, and
     identifiability tests.
 
 The package does **not** yet represent a hardware-validated digital twin. Its
@@ -57,6 +59,7 @@ There are three documentation layers:
 
 - [`README.md`](README.md) is the concise package reference.
 - `README_detailed.md`, this file, is the step-by-step technical walkthrough.
+- [`PINN_SHOWCASE.md`](PINN_SHOWCASE.md) is the focused reproducible case study.
 - [`notes/00_index.md`](notes/00_index.md) links to learning exercises,
   user-authored explanations, predictions, corrections, and derivations.
 
@@ -79,7 +82,7 @@ standard library. Run all current ThermoTwin tests with:
 python3 -m unittest discover -s tests
 ```
 
-The current suite contains 262 focused tests. Optional learned-model and report
+The current suite contains 266 focused tests. Optional learned-model and report
 tests are skipped
 when their optional dependencies are not installed.
 
@@ -93,6 +96,12 @@ python3 -m pip install -r thermotwin/requirements-pinn.txt
 ```
 
 ### 2.3 Run the main workflows
+
+Run the focused physics-only and inverse-PINN showcase:
+
+```bash
+python3 -m thermotwin.pinn_showcase
+```
 
 Train and validate the forward PINN:
 
@@ -2908,6 +2917,17 @@ Checks:
 - rejection of inconsistent training-history lengths; and
 - creation of a valid eight-panel PNG report.
 
+### 12.7i `test_pinn_showcase.py`
+
+Checks:
+
+- valid CPU-first epoch and device configuration;
+- use of the shared ignored figures directory;
+- exact alignment of forward and inverse time, current, and switch histories;
+- preservation of exact constructed continuity in both workflows;
+- inclusion of all 61 inverse observation times; and
+- creation of a valid focused six-panel PNG.
+
 ### 12.8 `test_inverse_thermal_conductance.py`
 
 Checks:
@@ -3456,6 +3476,7 @@ thermotwin/
 ├── piecewise_contact_forward_pinn_report.py
 ├── piecewise_inverse_contact_resistance.py
 ├── piecewise_inverse_contact_resistance_report.py
+├── pinn_showcase.py
 ├── inverse_thermal_conductance.py
 ├── inverse_contact_resistance.py
 ├── inverse_contact_resistance_report.py
@@ -3473,6 +3494,7 @@ thermotwin/
 ├── contact_resistance_sensor_study.py
 ├── contact_resistance_combined_study.py
 ├── CONTACT_RESISTANCE_EXPERIMENT.md
+├── PINN_SHOWCASE.md
 ├── requirements-pinn.txt
 ├── README.md
 ├── README_detailed.md
@@ -3496,6 +3518,7 @@ tests/
 ├── test_piecewise_contact_forward_pinn_report.py
 ├── test_piecewise_inverse_contact_resistance.py
 ├── test_piecewise_inverse_contact_resistance_report.py
+├── test_pinn_showcase.py
 ├── test_inverse_thermal_conductance.py
 ├── test_inverse_contact_resistance.py
 ├── test_inverse_contact_resistance_report.py
@@ -3544,13 +3567,15 @@ The planned learning and implementation sequence is:
    continuity, and independent RK4 pulse comparison.
 10. Preserve the ideal piecewise inverse contact PINN, conventional comparison
     on identical pulse observations, and unseen-regime parameter transfer.
-11. Compare piecewise PINN and conventional recovery on the same missing,
+11. Preserve the one-command showcase as the concise evidence-backed
+    demonstration of the validated forward and inverse capabilities.
+12. Compare piecewise PINN and conventional recovery on the same missing,
     restricted-sensor, noisy, biased, lagged, and combined pulse observations.
-12. Extend practical-identifiability studies to uncertain physical parameters
+13. Extend practical-identifiability studies to uncertain physical parameters
    and simultaneous unknowns.
-13. Compare continuous and pulsed control strategies.
-14. Rank candidate experiments by sensitivity or predicted information gain.
-15. Validate against hardware only after measurement definitions, safety
+14. Compare continuous and pulsed control strategies.
+15. Rank candidate experiments by sensitivity or predicted information gain.
+16. Validate against hardware only after measurement definitions, safety
     limits, sensor locations, and fluid interfaces are agreed.
 
 Both READMEs should be updated as each milestone changes package behavior. The

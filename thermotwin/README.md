@@ -4,6 +4,23 @@ For a step-by-step explanation of the physics, code paths, conventional solver,
 forward PINN, inverse parameter inference, tests, and current limitations, see
 [`README_detailed.md`](README_detailed.md).
 
+## PINN showcase
+
+For the shortest end-to-end demonstration, see
+[`PINN_SHOWCASE.md`](PINN_SHOWCASE.md). One command trains the switched-current
+physics-only and inverse PINNs and creates a focused six-panel evidence figure:
+
+~~~bash
+python3 -m thermotwin.pinn_showcase
+~~~
+
+The showcase highlights zero-label four-state forward prediction, recovery of
+a hidden contact resistance from a 100 percent wrong initial guess,
+reconstruction of two unobserved hot-side states, exact temperature continuity
+at current switches, and parameter transfer to lower-amplitude and bipolar
+controls. It also includes the conventional scalar baseline and states the
+limits of the same-model synthetic comparison explicitly.
+
 This package is isolated from `pinn_heat`. Its first milestone implements the
 constant-property, quasi-steady thermoelectric relations
 
