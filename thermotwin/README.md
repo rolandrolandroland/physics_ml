@@ -435,6 +435,77 @@ python3 -m thermotwin.forward_pinn_report
 
 The core solver remains independent of PyTorch and `pinn_heat`.
 
+## Contact-aware forward PINN
+
+The optional `thermotwin.contact_forward_pinn` module extends the learned
+forward model to the explicit-contact topology. One network maps time to four
+temperatures in the fixed order
+
+~~~text
+(cold TE face, hot TE face, cold exchanger, hot exchanger).
+~~~
+
+Its output transform enforces all four initial temperatures exactly. Training
+uses the four face and exchanger energy-balance residuals; the RK4 contact
+trajectory is withheld until validation. The initial contact PINN keeps every
+physical parameter known, including both contact resistances, and accepts
+constant current only. It therefore validates the four-state learned
+architecture but does not yet perform contact-resistance inference.
+
+Run the default 3,000-epoch CPU comparison with:
+
+~~~bash
+python3 -m thermotwin.contact_forward_pinn_report
+~~~
+
+The six-panel report compares the four temperature histories, their pointwise
+errors, all four physics residuals, both contact temperature drops, and the
+training loss. It is written by default to
+`thermotwin/figures/contact_forward_pinn_comparison.png`.
+
+With the frozen seed and reference experiment, the current default run gives a
+final physics loss of about $1.13\times10^{-4}$ K$^2$/s$^2$. The cold-face,
+hot-face, cold-exchanger, and hot-exchanger RMSE values are approximately
+0.02498 K, 0.00348 K, 0.01509 K, and 0.00494 K, respectively. Small variation
+across PyTorch versions or hardware is possible.
+
+Physics and code exercises for this stage are in
+[`notes/15_contact_forward_pinn.md`](notes/15_contact_forward_pinn.md).
+
+## Inverse cold-contact-resistance PINN
+
+The optional `thermotwin.inverse_contact_resistance` module reuses the
+four-temperature contact PINN and makes only the cold thermal contact
+resistance trainable. A softplus transform keeps the inferred resistance
+positive. All other physical parameters remain fixed at their synthetic truth.
+
+The first controlled inverse baseline uses constant 1 A current and 13 ideal
+cold-face/cold-exchanger observation times spaced 5 s apart. The loss combines
+four normalized physics residuals with the two observed temperature histories.
+Dense RK4 temperatures and both hot-side histories remain withheld from
+training.
+
+Run the 8,000-epoch CPU comparison and six-panel report with:
+
+~~~bash
+python3 -m thermotwin.inverse_contact_resistance_report
+~~~
+
+Starting from 0.50 K/W, the frozen run infers 0.250141 K/W for a hidden truth
+of 0.250000 K/W, or about 0.056 percent relative error. The conventional
+golden-section fit on the same sparse constant-current observations gives
+0.250000 K/W. Substituting the PINN estimate into the conventional solver gives
+all-sensor RMSE values of approximately 0.000087 K and 0.000145 K on the
+previously defined validation and bipolar test pulse regimes.
+
+The pulse-regime transfer check validates the inferred physical parameter, not
+the learned temperature network: the first inverse PINN itself still trains on
+one smooth constant-current experiment. It has not yet been exposed to noise,
+bias, lag, missing observations, or uncertain physical coefficients.
+
+The new physics and code exercises are in
+[`notes/16_inverse_contact_resistance_pinn.md`](notes/16_inverse_contact_resistance_pinn.md).
+
 ## First inverse parameter problem
 
 The optional `thermotwin.inverse_thermal_conductance` module treats the module

@@ -1077,12 +1077,57 @@ python3 -m unittest discover -s tests
 
 ---
 
-## 26. Planned progression
+## 26. Ideal inverse-PINN comparison
+
+The optional `inverse_contact_resistance.py` module now supplies a learned
+one-parameter comparison. It reuses the validated four-output contact PINN,
+makes only the cold contact resistance trainable through a positive softplus
+transform, and adds sparse cold-face and cold-exchanger temperature mismatch
+to the four physics residuals.
+
+This first comparison uses a smooth constant 1 A experiment rather than the
+training pulse above. Ideal cold-pair observations are retained every 5 s,
+giving 13 paired times. The hidden resistance is 0.25 K/W, the neural initial
+guess is 0.50 K/W, and every other physical parameter is held fixed. Dense RK4
+temperatures and both hot-side histories remain withheld during optimization.
+
+The conventional golden-section search is run on the same sparse
+constant-current observations. With the frozen CPU settings:
+
+| Estimator | Inferred cold contact resistance |
+| --- | ---: |
+| Inverse PINN | 0.250140756 K/W |
+| Conventional scalar search | 0.250000002 K/W |
+| Hidden truth | 0.250000000 K/W |
+
+The PINN's relative parameter error is 0.056303 percent. Its dense
+constant-current temperature RMSE remains between 0.000832 K and 0.001542 K
+across the four states.
+
+The learned resistance is then inserted into the conventional solver for the
+existing lower-amplitude validation pulse and bipolar test pulse. All-sensor
+RMSE is 0.000087 K and 0.000145 K, respectively. This transfers the physical
+parameter, not the constant-current neural temperature function.
+
+Run and plot the comparison with:
+
+~~~bash
+python3 -m thermotwin.inverse_contact_resistance_report
+~~~
+
+The ideal learned result does not yet use the noisy, biased, lagged, incomplete,
+or restricted pulse datasets documented above. A time-varying-control PINN is
+required before those exact datasets can enter neural inverse training without
+changing their experimental meaning.
+
+---
+
+## 27. Planned progression
 
 The next controlled extensions are:
 
-1. compare conventional least squares with an inverse PINN on identical
-   imperfect observations;
+1. extend the PINN to switched current and compare it with conventional least
+   squares on identical imperfect pulse observations;
 2. infer contact resistance while perturbing other assumed-known parameters;
 3. study simultaneous contact, capacitance, conductance, bias, and lag
    ambiguities one small set at a time;

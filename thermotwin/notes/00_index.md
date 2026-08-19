@@ -22,6 +22,8 @@ choice. They are intentionally separate from the package README.
 | [12 — Virtual test stand](12_virtual_test_stand.md) | Understand sensor locations, observation schemas, sampling, interpolation, hidden truth, noise, bias, lag, and missing readings | Not started |
 | [13 — Measurement imperfections](13_measurement_imperfections.md) | Consolidate temperature noise, sensor bias, sensor lag, deterministic missingness, transformation order, and identifiability | Not started |
 | [14 — Contact-resistance experiment](14_contact_resistance_experiment.md) | Understand pulse design, scalar inference, held-out regimes, repeated noise, fixed bias, sensor lag, informative missingness, restricted sensor sets, combined imperfections, empirical statistics, and limitations | Not started |
+| [15 — Contact-aware forward PINN](15_contact_forward_pinn.md) | Understand four learned temperatures, four contact energy residuals, exact initial conditions, autograd, loss construction, RK4 validation, and the bridge to inverse contact inference | Not started |
+| [16 — Inverse contact-resistance PINN](16_inverse_contact_resistance_pinn.md) | Understand positive resistance parameterization, sparse cold-pair observations, joint physics/data loss, identifiability, conventional comparison, and parameter transfer to unseen pulses | Not started |
 
 Suggested statuses are `Not started`, `Draft`, `Revising`, and `Reviewed`.
 

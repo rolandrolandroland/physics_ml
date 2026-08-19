@@ -31,11 +31,14 @@ foundation of that larger goal. It contains:
 19. Regime-aligned turn-off missingness and a local information metric.
 20. Cold-face, cold-exchanger, hot-pair, and all-sensor availability studies.
 21. A 100-trial combined-imperfections inference study.
-22. A forward physics-informed neural network, or PINN.
-23. An RK4-versus-PINN comparison report.
-24. A first inverse PINN that infers the module thermal conductance $K$ from
+22. A two-output forward physics-informed neural network, or PINN.
+23. A four-output contact-aware forward PINN with fixed physical parameters.
+24. RK4-versus-PINN comparison reports for both learned topologies.
+25. A first inverse PINN that infers the module thermal conductance $K$ from
    sparse synthetic temperature observations.
-25. Unit, sign, energy, sampling, measurement, numerical, PINN, and
+26. A four-state inverse PINN that infers the cold contact resistance and
+    transfers it to unseen pulse regimes.
+27. Unit, sign, energy, sampling, measurement, numerical, PINN, and
     identifiability tests.
 
 The package does **not** yet represent a hardware-validated digital twin. Its
@@ -72,7 +75,7 @@ standard library. Run all current ThermoTwin tests with:
 python3 -m unittest discover -s tests
 ```
 
-The current suite contains 219 focused tests. Optional learned-model and report
+The current suite contains 240 focused tests. Optional learned-model and report
 tests are skipped
 when their optional dependencies are not installed.
 
@@ -99,6 +102,20 @@ Generate the four-panel forward comparison report:
 python3 -m thermotwin.forward_pinn_report
 ```
 
+Train the four-node contact-aware forward PINN and generate its six-panel
+comparison report:
+
+```bash
+python3 -m thermotwin.contact_forward_pinn_report
+```
+
+Infer the cold contact resistance and generate the neural-versus-conventional
+comparison report:
+
+```bash
+python3 -m thermotwin.inverse_contact_resistance_report
+```
+
 Generate the contact-aware comparison and resistance sweep:
 
 ~~~bash
@@ -111,7 +128,7 @@ Run the first inverse problem and infer $K$:
 python3 -m thermotwin.inverse_thermal_conductance
 ```
 
-Both report commands write to `thermotwin/figures/` by default. The shared
+All report commands write to `thermotwin/figures/` by default. The shared
 location is defined in `figure_paths.py`, created automatically when needed,
 and ignored by Git because generated PNG reports are outputs rather than source
 code. Pass `--output PATH` to either command when a deliberate alternate
@@ -1438,6 +1455,190 @@ difficulty representing that discontinuity precisely.
 Future options include splitting the time domain at switches or explicitly
 handling transition points in a time-dependent-control PINN.
 
+### 10.11 Contact-aware forward PINN
+
+[`contact_forward_pinn.py`](contact_forward_pinn.py) is a separate learned
+solver for the explicit-contact four-node topology. It does not replace or
+silently alter the two-node PINN. The two learned forward models now answer
+different modeling questions:
+
+| Model | Learned temperature functions | Explicit contacts | Current support |
+| --- | --- | --- | --- |
+| `ForwardPINN` | $T_c(t), T_h(t)$ | No | Constant |
+| `ContactForwardPINN` | $T_{cf}(t), T_{hf}(t), T_{cx}(t), T_{hx}(t)$ | Yes | Constant |
+
+Here `f` means thermoelectric face and `x` means heat exchanger. Both models
+are forward PINNs: every physical coefficient is supplied and fixed. Neither
+one infers a parameter at this stage.
+
+### 10.12 Four-output architecture and exact initial state
+
+The contact model uses the same CPU-first default depth and width as the first
+PINN, but its final layer has four outputs:
+
+~~~text
+time -> 32 tanh units -> 32 tanh units -> 4 raw outputs
+~~~
+
+The output columns have one fixed order throughout the module:
+
+~~~text
+cold face, hot face, cold exchanger, hot exchanger
+~~~
+
+For each state $j$, the transformed output is
+
+$$
+T_j(t)=T_j(0)
++\frac{t}{t_{\mathrm{end}}}T_{\mathrm{scale}}N_j(t).
+$$
+
+This makes all four values at $t=0$ exact for every possible set of network
+weights. The initial derivatives remain trainable. In the frozen experiment,
+all four initial values are 300 K.
+
+### 10.13 Contact-aware physics residuals
+
+The network temperatures first define contact heat rates:
+
+$$
+\dot q_{cc}=\frac{T_{cx}-T_{cf}}{R_{cc}},
+\qquad
+\dot q_{hc}=\frac{T_{hf}-T_{hx}}{R_{hc}}.
+$$
+
+The thermoelectric $Q_c$ and $Q_h$ functions use $T_{cf}$ and $T_{hf}$, not
+the exchanger temperatures. Automatic differentiation gives the four network
+temperature rates. The residuals are the network rates minus the rates
+required by the four energy balances:
+
+$$
+r_{cf}=\left(\frac{dT_{cf}}{dt}\right)_{\mathrm{network}}
+-\frac{\dot q_{cc}-Q_c}{C_{cf}},
+$$
+
+$$
+r_{hf}=\left(\frac{dT_{hf}}{dt}\right)_{\mathrm{network}}
+-\frac{Q_h-\dot q_{hc}}{C_{hf}},
+$$
+
+$$
+r_{cx}=\left(\frac{dT_{cx}}{dt}\right)_{\mathrm{network}}
+-\frac{G_c(T_{c,\infty}-T_{cx})
++\dot q_{c,\mathrm{ext}}-\dot q_{cc}}{C_{cx}},
+$$
+
+$$
+r_{hx}=\left(\frac{dT_{hx}}{dt}\right)_{\mathrm{network}}
+-\frac{G_h(T_{h,\infty}-T_{hx})
++\dot q_{h,\mathrm{ext}}+\dot q_{hc}}{C_{hx}}.
+$$
+
+Every residual has units K/s. The cold and hot contact heat rates appear with
+opposite signs on their two adjacent nodes, so a contact transfers energy but
+does not create it.
+
+The training objective is
+
+$$
+\mathcal L_{\mathrm{contact}}
+=\mathrm{mean}(r_{cf}^2)
++\mathrm{mean}(r_{hf}^2)
++\mathrm{mean}(r_{cx}^2)
++\mathrm{mean}(r_{hx}^2).
+$$
+
+All four terms currently have equal numerical weight. This is reasonable for
+the frozen example because they share units and comparable scales, but it is a
+modeling choice rather than a universal rule.
+
+### 10.14 What training sees
+
+Training sees:
+
+1. The 128 collocation times between 0 and 60 s.
+2. The known physical parameters and experimental inputs.
+3. The four exact initial temperatures through the output transform.
+4. The four differential-equation residuals.
+
+Training does not see any RK4 temperature sample. After training, the learned
+trajectory is evaluated at all 601 RK4 times. This keeps the conventional
+solution as an independent numerical reference for the same equations.
+
+The first contact PINN deliberately rejects switching current. That restriction
+matches the smooth first two-node PINN and avoids asking one smooth network to
+represent derivative discontinuities before the four-state architecture has
+been validated.
+
+### 10.15 Default contact-PINN configuration
+
+| Setting | Default |
+| --- | ---: |
+| Hidden layers | 2 |
+| Hidden width | 32 |
+| Output temperatures | 4 |
+| Collocation points | 128 |
+| Epochs | 3,000 |
+| Adam learning rate | $10^{-3}$ |
+| Temperature scale | 10 K |
+| Random seed | 11 |
+| Device | CPU |
+
+As with the two-node PINN, `device="mps"` requests Apple Metal and
+`device="auto"` uses it when available. CPU remains the documented default
+because this network is small and the reproducible run is practical on an
+M1 MacBook Pro.
+
+### 10.16 Frozen validation result and report
+
+Run the complete training and report workflow from the repository root:
+
+~~~bash
+python3 -m thermotwin.contact_forward_pinn_report
+~~~
+
+With the frozen seed and reference experiment, the current default CPU run
+produces:
+
+| Metric | Value |
+| --- | ---: |
+| Initial physics loss | $3.282427\times10^{-1}$ K$^2$/s$^2$ |
+| Final physics loss | $1.134535\times10^{-4}$ K$^2$/s$^2$ |
+| Cold-face RMSE | 0.024984 K |
+| Hot-face RMSE | 0.003482 K |
+| Cold-exchanger RMSE | 0.015086 K |
+| Hot-exchanger RMSE | 0.004939 K |
+
+Small changes are possible across PyTorch versions and hardware. These errors
+compare two numerical solution methods for the same assumed equations; they
+do not validate those equations against hardware.
+
+[`contact_forward_pinn_report.py`](contact_forward_pinn_report.py) creates six
+panels:
+
+1. Face-temperature histories from RK4 and the PINN.
+2. Exchanger-temperature histories from RK4 and the PINN.
+3. All four pointwise PINN-minus-RK4 errors.
+4. All four ODE residual histories.
+5. Cold and hot contact temperature drops from both methods.
+6. Physics loss against training epoch.
+
+The report is written by default to the ignored generated-output directory as
+`thermotwin/figures/contact_forward_pinn_comparison.png`.
+
+### 10.17 Why this comes before inverse contact inference
+
+This stage isolates the new difficulty introduced by topology. It verifies
+that one differentiable model can represent four coupled temperature states
+and satisfy all four balances while the contact resistances are known. The
+next inverse stage will make at least the cold contact resistance trainable and
+add observation mismatch to the loss. If inverse recovery then fails, the
+forward architecture, residual signs, and reference comparison have already
+been checked independently.
+
+The learning worksheet is
+[`notes/15_contact_forward_pinn.md`](notes/15_contact_forward_pinn.md).
+
 ---
 
 ## 11. Inverse parameter baselines
@@ -1956,6 +2157,168 @@ python3 -m thermotwin.contact_resistance_combined_study
 Use `--trials 5` for a shorter exploratory run. As in the noise-only study,
 the empirical percentile interval is not a hardware confidence interval.
 
+### 11.17 Inverse cold-contact-resistance PINN
+
+[`inverse_contact_resistance.py`](inverse_contact_resistance.py) reuses the
+validated four-output contact network and makes one physical parameter
+trainable:
+
+$$
+R_{cc}=\mathrm{softplus}(r_{\mathrm{raw}})>0.
+$$
+
+The temperature network still predicts
+$T_{cf},T_{hf},T_{cx},T_{hx}$. The cold contact heat in both adjacent energy
+balances now uses the learned value:
+
+$$
+\dot q_{cc}=\frac{T_{cx}-T_{cf}}{R_{cc}}.
+$$
+
+The hot contact resistance, module coefficients, four capacitances, reservoir
+conductances, initial temperatures, reservoirs, and external heat inputs all
+remain fixed. Positivity prevents an unphysical estimate but does not make the
+resistance identifiable when $T_{cx}-T_{cf}$ remains zero.
+
+#### 11.17.1 Frozen inverse problem
+
+The first learned contact inverse problem deliberately remains smooth:
+
+| Choice | Value |
+| --- | ---: |
+| Current | Constant 1 A |
+| Duration | 60 s |
+| Hidden cold contact resistance | 0.25 K/W |
+| Initial resistance guess | 0.50 K/W |
+| Observed sensors | Cold face and cold exchanger |
+| Observation times | 0, 5, 10, ..., 60 s |
+| Paired observation times | 13 |
+| Dense RK4 validation times | 601 |
+
+Only the 26 cold-pair temperature values enter the observation loss. The hot
+face and hot exchanger remain coupled through the physics, but their synthetic
+temperatures are not labels. Dense RK4 histories are withheld until
+post-training validation.
+
+The constant-current choice isolates parameter learning from the derivative
+discontinuities created by rectangular current switches. The previously
+designed pulse regimes are retained as parameter-transfer tests, described
+below.
+
+#### 11.17.2 Physics and observation loss
+
+The forward contact residual function accepts an optional differentiable cold
+contact resistance. Ordinary forward training omits the override and keeps the
+experiment value. Inverse training supplies the positive learned tensor, so
+gradients pass from both cold contact balances into $r_{\mathrm{raw}}$.
+
+The four normalized physics terms are
+
+$$
+\mathcal L_{\mathrm{physics}}
+=\sum_{j\in\{cf,hf,cx,hx\}}
+\mathrm{mean}\left[
+\left(\frac{r_j}{0.1\ \mathrm{K/s}}\right)^2
+\right].
+$$
+
+The cold-pair observation term is
+
+$$
+\mathcal L_{\mathrm{obs}}
+=\mathrm{mean}\left[
+\left(
+\frac{T_{s,k}^{\mathrm{PINN}}-T_{s,k}^{\mathrm{obs}}}
+{1\ \mathrm{K}}
+\right)^2
+\right],
+\qquad s\in\{cf,cx\}.
+$$
+
+The baseline total is
+
+$$
+\mathcal L
+=\mathcal L_{\mathrm{physics}}+\mathcal L_{\mathrm{obs}}.
+$$
+
+Both components are dimensionless after scaling. The 0.1 K/s and 1 K scales
+are numerical conditioning choices, not new physical constants or measurement
+uncertainties.
+
+Adam updates the temperature-network parameters at $10^{-3}$ and the raw
+resistance at $5\times10^{-3}$. The default uses 128 collocation points, two
+hidden layers of 32 tanh units, 8,000 epochs, seed 13, and CPU.
+
+#### 11.17.3 Conventional comparison and transfer
+
+The dependency-free golden-section fitter receives the same sparse ideal
+constant-current dataset and estimates the same single parameter. This is a
+comparison of optimization representations:
+
+- conventional search repeatedly integrates RK4 for candidate resistance
+  values and minimizes temperature mismatch; and
+- the inverse PINN jointly learns one continuous four-temperature trajectory
+  and the resistance from physics plus sparse observations.
+
+After fitting, the PINN resistance is inserted into the conventional RK4 model
+for the established lower-amplitude validation pulse and bipolar test pulse.
+This checks whether the learned physical parameter transfers to unseen control
+regimes. It does **not** transfer or evaluate the constant-current neural
+temperature function under those pulses.
+
+#### 11.17.4 Frozen result
+
+Run the complete comparison with:
+
+~~~bash
+python3 -m thermotwin.inverse_contact_resistance_report
+~~~
+
+The default CPU result is:
+
+| Metric | Value |
+| --- | ---: |
+| True cold contact resistance | 0.250000000 K/W |
+| Initial PINN resistance | 0.500000000 K/W |
+| Inverse-PINN resistance | 0.250140756 K/W |
+| Conventional resistance, same observations | 0.250000002 K/W |
+| PINN absolute parameter error | 0.000140756 K/W |
+| PINN relative parameter error | 0.056303 percent |
+| Final normalized physics loss | $1.113218\times10^{-4}$ |
+| Final normalized observation loss | $1.388674\times10^{-6}$ |
+
+Dense constant-current temperature errors are:
+
+| State | RMSE |
+| --- | ---: |
+| Cold face | 0.001542 K |
+| Hot face | 0.000832 K |
+| Cold exchanger | 0.000885 K |
+| Hot exchanger | 0.001420 K |
+
+The cold-face and cold-exchanger RMSE values at the 13 observed times are
+0.001460 K and 0.000805 K. On unseen controls, conventional simulations using
+the PINN parameter give all-sensor RMSE values of 0.000087 K for the
+lower-amplitude validation pulse and 0.000145 K for the bipolar test pulse.
+
+[`inverse_contact_resistance_report.py`](inverse_contact_resistance_report.py)
+plots face and exchanger trajectories with observed points, all four dense
+errors, total/physics/observation losses, resistance convergence against truth
+and the conventional fit, and the cold contact temperature drop. The default
+ignored output is
+`thermotwin/figures/inverse_contact_resistance_comparison.png`.
+
+The result is a same-model, ideal-sensor, one-unknown synthetic baseline. It
+does not show recovery from the noise, bias, lag, missingness, restricted
+sensor sets, simultaneous unknown parameters, model mismatch, or hardware
+data already studied with the conventional estimator. The next learned-model
+extension must handle pulse controls before it can consume those exact
+imperfect pulse datasets during inverse training.
+
+Exercises are in
+[`notes/16_inverse_contact_resistance_pinn.md`](notes/16_inverse_contact_resistance_pinn.md).
+
 ---
 
 ## 12. What each test category checks
@@ -2035,6 +2398,56 @@ Checks:
 - alignment of all report histories;
 - zero initial temperature error; and
 - creation of a valid PNG report.
+
+### 12.7a `test_contact_forward_pinn.py`
+
+Checks:
+
+- exact enforcement of all four initial temperatures;
+- the hand-calculated startup slopes of -0.28, +0.16, 0, and 0 K/s;
+- exact agreement of all four PINN residual equations with the conventional
+  right-hand side at an arbitrary four-temperature state;
+- the zero-current equal-temperature equilibrium limit;
+- inclusion of all four mean-squared residual terms in the loss;
+- rejection of switching current and invalid configurations;
+- successful backpropagation through all four output derivatives; and
+- short CPU training with all four RK4 RMSE values below 0.5 K.
+
+### 12.7b `test_contact_forward_pinn_report.py`
+
+Checks:
+
+- use of the shared ignored `thermotwin/figures/` output location;
+- alignment of reference, prediction, error, residual, and contact-drop
+  histories;
+- zero initial errors and contact drops for the frozen initial state; and
+- creation of a valid six-panel PNG report.
+
+### 12.7c `test_inverse_contact_resistance.py`
+
+Checks:
+
+- the exact 13-time ideal constant-current cold-pair dataset;
+- positive resistance parameterization and all four exact initial states;
+- the expected cold-face and cold-exchanger residual changes when contact
+  resistance increases at a fixed temperature state;
+- zero resistance gradient when no cold contact temperature drop develops;
+- rejection of switching current in the first inverse-contact PINN;
+- joint CPU training from a deliberately wrong 0.50 K/W initial guess;
+- recovery of the 0.25 K/W hidden resistance;
+- agreement with conventional scalar search on the same observations;
+- transfer of the inferred parameter to unseen validation and test pulses; and
+- rejection of malformed observations and optimization settings.
+
+### 12.7d `test_inverse_contact_resistance_report.py`
+
+Checks:
+
+- use of the shared ignored figures directory;
+- alignment of dense truth, learned trajectories, errors, observations,
+  contact drops, losses, and parameter history;
+- exact initial temperature errors; and
+- creation of a valid inverse-comparison PNG.
 
 ### 12.8 `test_inverse_thermal_conductance.py`
 
@@ -2313,8 +2726,11 @@ the conventional equations.
 
 ### 13.4 Forward PINN versus RK4
 
-This verifies that the PINN approximates the conventional mathematical model.
-It does not validate the mathematical model against hardware.
+The two-node comparison verifies two temperature functions and two residuals.
+The contact-aware comparison separately verifies four temperature functions,
+four residuals, and two derived interface drops. Both checks establish that a
+PINN approximates its corresponding conventional mathematical model. Neither
+one validates that mathematical model against hardware.
 
 ### 13.5 Synthetic inverse recovery
 
@@ -2418,7 +2834,17 @@ spread. It does not establish how these imperfections interact in hardware,
 validate their chosen magnitudes, or correct the misspecified measurement
 model.
 
-### 13.18 Hardware validation
+### 13.18 Synthetic inverse-contact PINN validation
+
+The inverse-contact tests verify positive parameterization, local sensitivity,
+an exact no-contact-drop identifiability limit, sparse-observation recovery,
+agreement with scalar search, dense same-regime temperature errors, and
+parameter transfer to two pulse regimes. They do not show that the neural
+temperature function handles current switches or that the estimator is robust
+to imperfect measurements, uncertain physics, multiple parameters, or real
+hardware.
+
+### 13.19 Hardware validation
 
 Hardware validation will require measured temperatures, currents, voltages,
 sensor timing and locations, calibration information, contact modeling, and a
@@ -2443,9 +2869,10 @@ The current results depend on these assumptions:
 8. Reservoir temperatures remain constant during one run.
 9. External heat inputs remain constant during one run.
 10. The conventional current input is scalar or piecewise constant.
-11. The first forward and inverse PINNs use constant current only.
-12. The first inverse problem has one unknown parameter and noise-free paired
-    temperature observations.
+11. The two-node forward PINN, four-node contact forward PINN, inverse-$K$
+    PINN, and inverse-contact PINN use constant current only.
+12. Each current PINN inverse problem has one unknown parameter and noise-free
+    paired temperature observations.
 13. The virtual test-stand baseline uses exact, instantaneous temperature
     sensors at all four modeled nodes and records current without error.
 14. The first noisy dataset adds independent Gaussian temperature errors with
@@ -2478,12 +2905,20 @@ The current results depend on these assumptions:
 24. The combined study uses cold-face lag and bias, independent Gaussian
     noise, regime-aligned cold-pair outages, and cold-pair-only availability;
     every other physical parameter remains known and exact.
+25. The contact-aware forward PINN uses the same fixed four-node parameters as
+    the conventional contact reference, gives all four residuals equal weight,
+    and does not use temperature observations during training.
+26. The inverse-contact PINN trains on 13 ideal cold-pair observation times
+    under constant 1 A current, keeps every parameter except the cold contact
+    resistance fixed, and uses the conventional solver—not its learned
+    temperature network—for transfer checks on pulse regimes.
 
 ### 14.1 Contact-resistance scope
 
-The conventional four-node model includes separate cold and hot thermal
-contact resistances between TE faces and heat exchangers. The two-node solver,
-forward PINN, and inverse-$K$ PINN still omit those explicit interfaces.
+The conventional four-node model, contact-aware forward PINN, and inverse
+contact PINN include separate cold and hot thermal contact resistances between
+TE faces and heat exchangers. The two-node solver, two-node forward PINN, and
+inverse-$K$ PINN still omit those explicit interfaces.
 
 - $K$ is internal parasitic thermal conductance through the module.
 - $R_{\mathrm{contact},c}$ and $R_{\mathrm{contact},h}$ are interface thermal
@@ -2492,8 +2927,11 @@ forward PINN, and inverse-$K$ PINN still omit those explicit interfaces.
 - $R$ remains module electrical resistance.
 
 The conventional cold contact baseline infers one resistance from ideal
-same-model synthetic data. It does not calibrate either contact against
-hardware, and the hot contact has not been inferred. The observation schema
+same-model synthetic data. The inverse contact PINN also infers that cold
+resistance from a separate ideal constant-current dataset, while the
+contact-aware forward PINN keeps both contacts fixed. None of these workflows
+calibrates a contact against hardware, and the hot contact has not been
+inferred. The observation schema
 identifies modeled sensor locations, but it does not
 yet represent physical sensor geometry, empirically calibrated noise, bias,
 lag, or missingness, random or value-dependent outages, automated calibration,
@@ -2521,7 +2959,11 @@ thermotwin/
 ├── experiments.py
 ├── forward_pinn.py
 ├── forward_pinn_report.py
+├── contact_forward_pinn.py
+├── contact_forward_pinn_report.py
 ├── inverse_thermal_conductance.py
+├── inverse_contact_resistance.py
+├── inverse_contact_resistance_report.py
 ├── contact_resistance_inference.py
 ├── virtual_test_stand.py
 ├── measurement_noise.py
@@ -2553,7 +2995,11 @@ tests/
 ├── test_experiments.py
 ├── test_forward_pinn.py
 ├── test_forward_pinn_report.py
+├── test_contact_forward_pinn.py
+├── test_contact_forward_pinn_report.py
 ├── test_inverse_thermal_conductance.py
+├── test_inverse_contact_resistance.py
+├── test_inverse_contact_resistance_report.py
 ├── test_virtual_test_stand.py
 ├── test_measurement_noise.py
 ├── test_measurement_bias.py
@@ -2591,14 +3037,17 @@ The planned learning and implementation sequence is:
    inference limits.
 6. Preserve the combined-imperfections study and its exact zero-imperfection
    reduction.
-7. Compare inverse PINN recovery with conventional least squares on the same
-   imperfect observations.
-8. Extend practical-identifiability studies to uncertain physical parameters
+7. Preserve the fixed-parameter four-node contact PINN and its independent RK4
+   comparison.
+8. Preserve the ideal constant-current inverse contact PINN, conventional
+   comparison, and pulse-regime parameter-transfer checks.
+9. Extend the learned contact model to time-varying current, then compare PINN
+   and conventional recovery on the same imperfect pulse observations.
+10. Extend practical-identifiability studies to uncertain physical parameters
    and simultaneous unknowns.
-9. Extend the learned model to time-varying current.
-10. Compare continuous and pulsed control strategies.
-11. Rank candidate experiments by sensitivity or predicted information gain.
-12. Validate against hardware only after measurement definitions, safety
+11. Compare continuous and pulsed control strategies.
+12. Rank candidate experiments by sensitivity or predicted information gain.
+13. Validate against hardware only after measurement definitions, safety
     limits, sensor locations, and fluid interfaces are agreed.
 
 Both READMEs should be updated as each milestone changes package behavior. The
