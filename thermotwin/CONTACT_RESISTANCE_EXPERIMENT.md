@@ -1115,11 +1115,10 @@ Run and plot the comparison with:
 python3 -m thermotwin.inverse_contact_resistance_report
 ~~~
 
-The ideal learned result does not yet use the noisy, biased, lagged, incomplete,
-or restricted pulse datasets documented above. The piecewise forward PINN in
-the next section now handles the control switches, but it must be extended to
-inverse training before those exact datasets can enter neural parameter
-inference without changing their experimental meaning.
+The ideal learned result does not use the noisy, biased, lagged, incomplete,
+or restricted pulse datasets documented above. Section 27 adds the piecewise
+forward representation and Section 28 extends it to ideal inverse pulse
+training. The imperfect datasets remain the next neural comparisons.
 
 ---
 
@@ -1159,22 +1158,82 @@ exactly 0 K. Its RK4 comparison gives:
 | Cold exchanger | 0.009327 K |
 | Hot exchanger | 0.004628 K |
 
-This is a fixed-parameter forward validation, not yet an inference result. It
-establishes the segmented temperature and residual representation before the
-cold contact resistance is made trainable on pulse observations.
+This is a fixed-parameter forward validation. It establishes the segmented
+temperature and residual representation before the cold contact resistance is
+made trainable on pulse observations in the next section.
 
 The implementation details and exercises are in
 [`notes/17_piecewise_contact_forward_pinn.md`](notes/17_piecewise_contact_forward_pinn.md).
 
 ---
 
-## 28. Planned progression
+## 28. Piecewise inverse contact-resistance PINN
+
+The optional `piecewise_inverse_contact_resistance.py` workflow uses the same
+whole 0--1--0 A training pulse and makes one cold contact resistance trainable.
+The parameter is positive by construction and is shared by all three
+temperature subnetworks. It therefore represents one constant physical
+interface rather than allowing an artificial resistance change at current
+switches.
+
+The ideal virtual test stand provides cold-face and cold-exchanger readings
+every 1 s, giving 61 paired observation times. All four physics residuals are
+evaluated at 192 transition-free collocation points. Dense RK4 temperatures
+and both hot-side histories remain withheld until validation. The conventional
+golden-section estimator receives the identical long-form pulse dataset.
+
+The normalized training objective is
+
+$$
+\mathcal L=\mathcal L_{physics}+20\mathcal L_{observations}.
+$$
+
+The observation weight is a numerical conditioning choice that reduces the
+ability of flexible temperature subnetworks to retain a biased resistance. It
+is not additional evidence and does not change the energy balances. Parameter
+accuracy is checked directly against hidden truth and conventional search.
+
+Run the frozen 8,000-epoch CPU workflow with:
+
+~~~bash
+python3 -m thermotwin.piecewise_inverse_contact_resistance_report
+~~~
+
+Starting from 0.50 K/W, the result is:
+
+| Metric | Result |
+| --- | ---: |
+| Hidden resistance | 0.250000000 K/W |
+| Piecewise inverse-PINN resistance | 0.250518948 K/W |
+| Conventional fit, identical observations | 0.250000002 K/W |
+| PINN relative parameter error | 0.207579 percent |
+| Maximum boundary-temperature jump | 0 K |
+| Validation-pulse all-sensor transfer RMSE | 0.000322 K |
+| Bipolar-test all-sensor transfer RMSE | 0.000534 K |
+
+The dense neural training-pulse RMSE values are 0.006704 K, 0.002868 K,
+0.001797 K, and 0.002624 K for the cold face, hot face, cold exchanger, and hot
+exchanger. The transfer results insert the PINN parameter into the conventional
+solver; they transfer the physical resistance, not a neural trajectory with
+different switch times.
+
+This is still an ideal same-model, one-unknown result. Its exact limiting case
+shows that resistance has zero loss gradient when no cold contact temperature
+drop develops. The next comparisons will replace ideal records with the
+already frozen missing, restricted-sensor, noisy, biased, lagged, and combined
+datasets one mechanism at a time.
+
+The implementation and learning exercises are in
+[`notes/18_piecewise_inverse_contact_resistance.md`](notes/18_piecewise_inverse_contact_resistance.md).
+
+---
+
+## 29. Planned progression
 
 The next controlled extensions are:
 
-1. make the cold contact resistance trainable in the piecewise PINN and
-   compare it with conventional least squares on identical imperfect pulse
-   observations;
+1. compare the piecewise PINN and conventional estimator on identical missing,
+   restricted-sensor, noisy, biased, lagged, and combined pulse observations;
 2. infer contact resistance while perturbing other assumed-known parameters;
 3. study simultaneous contact, capacitance, conductance, bias, and lag
    ambiguities one small set at a time;

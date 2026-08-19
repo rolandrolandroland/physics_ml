@@ -25,6 +25,7 @@ choice. They are intentionally separate from the package README.
 | [15 — Contact-aware forward PINN](15_contact_forward_pinn.md) | Understand four learned temperatures, four contact energy residuals, exact initial conditions, autograd, loss construction, RK4 validation, and the bridge to inverse contact inference | Not started |
 | [16 — Inverse contact-resistance PINN](16_inverse_contact_resistance_pinn.md) | Understand positive resistance parameterization, sparse cold-pair observations, joint physics/data loss, identifiability, conventional comparison, and parameter transfer to unseen pulses | Not started |
 | [17 — Piecewise contact forward PINN](17_piecewise_contact_forward_pinn.md) | Understand switched-current physics, continuous temperatures, discontinuous rates, domain decomposition, exact interface chaining, collocation, routing, and RK4 validation | Not started |
+| [18 — Piecewise inverse contact resistance](18_piecewise_inverse_contact_resistance.md) | Understand shared positive resistance inference from a pulse, joint physics/data loss, loss weighting, identical-data comparison, switch continuity, identifiability, and parameter transfer | Not started |
 
 Suggested statuses are `Not started`, `Draft`, `Revising`, and `Reviewed`.
 

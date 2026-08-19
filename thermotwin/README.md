@@ -501,9 +501,9 @@ cold-face, hot-face, cold-exchanger, and hot-exchanger RMSE values against the
 transition-splitting RK4 reference are approximately 0.008862 K, 0.001989 K,
 0.009327 K, and 0.004628 K. RK4 temperatures remain withheld from training.
 
-This stage validates switched-current forward dynamics. Contact resistance is
-still fixed; the next learned stage will add a trainable cold contact to this
-piecewise architecture. Exercises are in
+This stage validates switched-current forward dynamics with fixed contact
+resistance. Its inverse extension below adds one trainable cold contact while
+preserving the same piecewise architecture. Exercises are in
 [`notes/17_piecewise_contact_forward_pinn.md`](notes/17_piecewise_contact_forward_pinn.md).
 
 ## Inverse cold-contact-resistance PINN
@@ -539,6 +539,41 @@ bias, lag, missing observations, or uncertain physical coefficients.
 
 The new physics and code exercises are in
 [`notes/16_inverse_contact_resistance_pinn.md`](notes/16_inverse_contact_resistance_pinn.md).
+
+## Piecewise inverse cold-contact-resistance PINN
+
+The optional `thermotwin.piecewise_inverse_contact_resistance` module combines
+the switched-current temperature architecture with one positive trainable cold
+contact resistance shared by all three time segments. Its frozen ideal problem
+uses the established 0--1--0 A training pulse and 61 paired cold-face and
+cold-exchanger observation times at 1 s spacing. Dense temperatures and both
+hot-side histories remain withheld from training.
+
+The normalized loss combines all four energy-balance residuals with the cold
+observation mismatch. The observation term has weight 20 to condition the
+joint neural/parameter optimization; this is a numerical choice, not
+additional data or a claim about sensor uncertainty. Exact segment chaining
+still forces all four temperature jumps to zero.
+
+Run the default 8,000-epoch CPU comparison and eight-panel report with:
+
+~~~bash
+python3 -m thermotwin.piecewise_inverse_contact_resistance_report
+~~~
+
+Starting from 0.50 K/W, the frozen run infers 0.250519 K/W for a hidden truth
+of 0.250000 K/W, or about 0.208 percent relative error. The conventional fit on
+the identical pulse observations gives 0.250000 K/W. Dense neural temperature
+RMSE values are approximately 0.00670, 0.00287, 0.00180, and 0.00262 K for the
+cold face, hot face, cold exchanger, and hot exchanger. Transferring the PINN
+parameter through the conventional solver gives all-sensor RMSE values of
+approximately 0.000322 K and 0.000534 K on the unseen validation and bipolar
+test pulses.
+
+This remains an ideal same-model baseline. It does not yet train on noise,
+bias, lag, missing observations, restricted sensors, uncertain coefficients,
+or hardware data. Exercises are in
+[`notes/18_piecewise_inverse_contact_resistance.md`](notes/18_piecewise_inverse_contact_resistance.md).
 
 ## First inverse parameter problem
 

@@ -1,4 +1,4 @@
-"""Infer one cold thermal contact resistance with the four-node PINN."""
+"""Infer cold contact resistance with a switched-current contact PINN."""
 
 import argparse
 from dataclasses import dataclass
@@ -14,107 +14,50 @@ from .contact_experiments import (
     run_four_node_contact_experiment,
 )
 from .contact_forward_pinn import (
-    ContactForwardPINN,
     contact_physics_residuals,
     predict_contact_trajectory,
 )
 from .contact_resistance_inference import (
     REFERENCE_COLD_CONTACT_RESISTANCE,
-    ContactResistanceRegime,
     ContactResistanceRegimeDataset,
     ContactResistanceRegimeMetrics,
     contact_resistance_experiment,
     evaluate_contact_resistance_regime,
     fit_cold_contact_resistance,
     reference_contact_resistance_dataset_split,
+    reference_contact_resistance_regimes,
     simulate_contact_resistance_observations,
 )
-from .controls import PiecewiseConstantCurrent, current_at
 from .forward_pinn import select_device
+from .inverse_contact_resistance import (
+    ColdContactTemperatureObservations,
+    InverseContactTrainingHistory,
+    cold_contact_observations_from_dataset,
+    inverse_softplus,
+)
+from .piecewise_contact_forward_pinn import (
+    PiecewiseContactForwardPINN,
+    current_segment_boundaries,
+    piecewise_collocation_times,
+    scheduled_current_tensor,
+)
 
 
-@dataclass(frozen=True)
-class ColdContactTemperatureObservations:
-    """Aligned ideal cold-face and cold-exchanger readings in kelvin."""
-
-    time: Tuple[float, ...]
-    cold_face: Tuple[float, ...]
-    cold_exchanger: Tuple[float, ...]
-
-    def __post_init__(self) -> None:
-        try:
-            times = tuple(float(value) for value in self.time)
-            cold_face = tuple(float(value) for value in self.cold_face)
-            cold_exchanger = tuple(
-                float(value) for value in self.cold_exchanger
-            )
-        except (TypeError, ValueError) as error:
-            raise ValueError(
-                "contact observations must be finite numeric values"
-            ) from error
-        object.__setattr__(self, "time", times)
-        object.__setattr__(self, "cold_face", cold_face)
-        object.__setattr__(self, "cold_exchanger", cold_exchanger)
-
-        if (
-            not times
-            or len(cold_face) != len(times)
-            or len(cold_exchanger) != len(times)
-        ):
-            raise ValueError(
-                "time and both cold observation histories must have equal "
-                "nonzero lengths"
-            )
-        if any(
-            not math.isfinite(value)
-            for value in times + cold_face + cold_exchanger
-        ):
-            raise ValueError("all contact observations must be finite")
-        if any(later <= earlier for earlier, later in zip(times, times[1:])):
-            raise ValueError("observation times must strictly increase")
-
-
-class IdealInverseContactProblem(NamedTuple):
-    """One constant-current experiment and its sparse ideal cold-pair data."""
+class IdealPiecewiseInverseContactProblem(NamedTuple):
+    """One pulse experiment and its sparse ideal cold-pair observations."""
 
     experiment: FourNodeContactExperiment
     dataset: ContactResistanceRegimeDataset
     observations: ColdContactTemperatureObservations
 
 
-def cold_contact_observations_from_dataset(
-    dataset: ContactResistanceRegimeDataset,
-) -> ColdContactTemperatureObservations:
-    """Extract aligned cold-pair temperatures from one regime dataset."""
-
-    cold_face = dataset.observations.observations_for("cold_face_sensor")
-    cold_exchanger = dataset.observations.observations_for(
-        "cold_exchanger_sensor"
-    )
-    face_times = tuple(item.time for item in cold_face)
-    exchanger_times = tuple(item.time for item in cold_exchanger)
-    if face_times != exchanger_times:
-        raise ValueError("cold sensor observations must have aligned times")
-    return ColdContactTemperatureObservations(
-        time=face_times,
-        cold_face=tuple(item.temperature for item in cold_face),
-        cold_exchanger=tuple(
-            item.temperature for item in cold_exchanger
-        ),
-    )
-
-
-def ideal_inverse_contact_problem(
+def ideal_piecewise_inverse_contact_problem(
     *,
-    observation_interval: float = 5.0,
-) -> IdealInverseContactProblem:
-    """Return the frozen 1 A inverse problem with ideal sparse cold data."""
+    observation_interval: float = 1.0,
+) -> IdealPiecewiseInverseContactProblem:
+    """Return the frozen 0--1--0 A inverse problem with ideal cold data."""
 
-    regime = ContactResistanceRegime(
-        name="constant_current_inverse_baseline",
-        split="train",
-        current=PiecewiseConstantCurrent.constant(1.0),
-    )
+    regime = reference_contact_resistance_regimes()[0]
     experiment = contact_resistance_experiment(
         regime,
         cold_contact_resistance=REFERENCE_COLD_CONTACT_RESISTANCE,
@@ -127,42 +70,21 @@ def ideal_inverse_contact_problem(
             sampling_interval=observation_interval,
         ),
     )
-    return IdealInverseContactProblem(
+    return IdealPiecewiseInverseContactProblem(
         experiment=experiment,
         dataset=dataset,
         observations=cold_contact_observations_from_dataset(dataset),
     )
 
 
-def inverse_softplus(value: float) -> float:
-    """Return the raw softplus value for a requested positive resistance."""
-
-    try:
-        value_is_finite = math.isfinite(value)
-    except TypeError as error:
-        raise ValueError(
-            "initial cold contact resistance must be positive"
-        ) from error
-    if not value_is_finite or value <= 0.0:
-        raise ValueError("initial cold contact resistance must be positive")
-    if value > 20.0:
-        return value
-    return math.log(math.expm1(value))
-
-
-def _inverse_softplus(value: float) -> float:
-    """Retain the original private helper for existing learning notes."""
-
-    return inverse_softplus(value)
-
-
-class InverseContactResistancePINN(nn.Module):
-    """Predict four temperatures and learn one positive cold contact."""
+class PiecewiseInverseContactResistancePINN(nn.Module):
+    """Predict piecewise temperatures and learn one shared positive contact."""
 
     def __init__(
         self,
         *,
         duration: float,
+        transition_times: Sequence[float],
         initial_temperatures: Sequence[float],
         initial_cold_contact_resistance: float,
         hidden_width: int = 32,
@@ -170,8 +92,9 @@ class InverseContactResistancePINN(nn.Module):
         temperature_scale: float = 10.0,
     ) -> None:
         super().__init__()
-        self.temperature_model = ContactForwardPINN(
+        self.temperature_model = PiecewiseContactForwardPINN(
             duration=duration,
+            transition_times=transition_times,
             initial_temperatures=initial_temperatures,
             hidden_width=hidden_width,
             hidden_layers=hidden_layers,
@@ -186,21 +109,32 @@ class InverseContactResistancePINN(nn.Module):
 
     @property
     def cold_contact_resistance(self) -> Tensor:
-        """Return the positive inferred cold contact resistance in K/W."""
+        """Return the positive shared cold contact resistance in K/W."""
 
         return functional.softplus(self.raw_cold_contact_resistance)
+
+    @property
+    def segment_boundaries(self) -> Tuple[float, ...]:
+        """Return the temperature model's interval boundaries."""
+
+        return self.temperature_model.segment_boundaries
+
+    def boundary_temperature_jumps(self) -> Tensor:
+        """Return exact right-minus-left temperature jumps at switches."""
+
+        return self.temperature_model.boundary_temperature_jumps()
 
     def forward(self, time: Tensor) -> Tensor:
         return self.temperature_model(time)
 
 
 @dataclass(frozen=True)
-class InverseContactResistanceConfig:
-    """Network, loss-scaling, and optimization settings."""
+class PiecewiseInverseContactResistanceConfig:
+    """Network, normalized loss, and CPU-first optimization settings."""
 
     hidden_width: int = 32
     hidden_layers: int = 2
-    collocation_points: int = 128
+    collocation_points: int = 192
     epochs: int = 8_000
     network_learning_rate: float = 1e-3
     parameter_learning_rate: float = 5e-3
@@ -209,8 +143,8 @@ class InverseContactResistanceConfig:
     residual_rate_scale: float = 0.1
     observation_temperature_scale: float = 1.0
     physics_weight: float = 1.0
-    observation_weight: float = 1.0
-    seed: int = 13
+    observation_weight: float = 20.0
+    seed: int = 19
     device: str = "cpu"
 
     def __post_init__(self) -> None:
@@ -258,25 +192,17 @@ class InverseContactResistanceConfig:
             raise ValueError("device must be 'cpu', 'mps', or 'auto'")
 
 
-class InverseContactTrainingHistory(NamedTuple):
-    """Dimensionless losses and inferred resistance after every epoch."""
+class PiecewiseInverseContactTrainingResult(NamedTuple):
+    """Trained inverse model, histories, device, and collocation times."""
 
-    total_loss: Tuple[float, ...]
-    physics_loss: Tuple[float, ...]
-    observation_loss: Tuple[float, ...]
-    cold_contact_resistance: Tuple[float, ...]
-
-
-class InverseContactTrainingResult(NamedTuple):
-    """Trained inverse model, optimization history, and selected device."""
-
-    model: InverseContactResistancePINN
+    model: PiecewiseInverseContactResistancePINN
     history: InverseContactTrainingHistory
     device: str
+    collocation_time: Tuple[float, ...]
 
 
-class InverseContactResistanceValidation(NamedTuple):
-    """Parameter, trajectory, observation, and transfer errors."""
+class PiecewiseInverseContactResistanceValidation(NamedTuple):
+    """Parameter, trajectory, observation, continuity, and transfer errors."""
 
     true_cold_contact_resistance: float
     inferred_cold_contact_resistance: float
@@ -289,6 +215,8 @@ class InverseContactResistanceValidation(NamedTuple):
     hot_exchanger_trajectory_rmse: float
     cold_face_observation_rmse: float
     cold_exchanger_observation_rmse: float
+    max_boundary_temperature_jump: float
+    training_regime_metrics: ContactResistanceRegimeMetrics
     validation_regime_metrics: ContactResistanceRegimeMetrics
     test_regime_metrics: ContactResistanceRegimeMetrics
 
@@ -299,27 +227,24 @@ def _rmse(errors: Sequence[float]) -> float:
     return math.sqrt(sum(error * error for error in errors) / len(errors))
 
 
-def _constant_current(experiment: FourNodeContactExperiment) -> None:
-    if isinstance(experiment.current, PiecewiseConstantCurrent):
-        if experiment.current.transition_times:
-            raise ValueError(
-                "the first inverse contact PINN supports constant current only"
-            )
-        return
-    current_at(experiment.current, 0.0)
-
-
-def train_inverse_contact_resistance(
-    problem: IdealInverseContactProblem,
-    config: InverseContactResistanceConfig = (
-        InverseContactResistanceConfig()
+def train_piecewise_inverse_contact_resistance(
+    problem: IdealPiecewiseInverseContactProblem,
+    config: PiecewiseInverseContactResistanceConfig = (
+        PiecewiseInverseContactResistanceConfig()
     ),
-) -> InverseContactTrainingResult:
-    """Jointly learn four temperatures and one positive cold contact."""
+) -> PiecewiseInverseContactTrainingResult:
+    """Learn one resistance and three exactly joined temperature segments."""
 
     experiment = problem.experiment
     observations = problem.observations
-    _constant_current(experiment)
+    boundaries = current_segment_boundaries(
+        experiment.current,
+        experiment.duration,
+    )
+    if config.collocation_points < 2 * (len(boundaries) - 1):
+        raise ValueError(
+            "collocation count must provide at least two points per segment"
+        )
     if (
         observations.time[0] < 0.0
         or observations.time[-1] > experiment.duration
@@ -328,8 +253,9 @@ def train_inverse_contact_resistance(
 
     device = select_device(config.device)
     torch.manual_seed(config.seed)
-    model = InverseContactResistancePINN(
+    model = PiecewiseInverseContactResistancePINN(
         duration=experiment.duration,
+        transition_times=boundaries[1:-1],
         initial_temperatures=(
             experiment.initial_cold_face_temperature,
             experiment.initial_hot_face_temperature,
@@ -355,13 +281,15 @@ def train_inverse_contact_resistance(
             },
         )
     )
-    collocation_time = torch.linspace(
-        0.0,
-        experiment.duration,
+    collocation_time = piecewise_collocation_times(
+        boundaries,
         config.collocation_points,
-        dtype=torch.float32,
         device=device,
-    ).reshape(-1, 1)
+    )
+    collocation_current = scheduled_current_tensor(
+        experiment.current,
+        collocation_time,
+    )
     observation_time = torch.tensor(
         observations.time,
         dtype=torch.float32,
@@ -385,13 +313,13 @@ def train_inverse_contact_resistance(
             collocation_time,
             experiment,
             cold_contact_resistance=model.cold_contact_resistance,
+            current_values=collocation_current,
         )
         physics_loss = sum(
             (residual / config.residual_rate_scale).square().mean()
             for residual in residuals
         )
-        predicted_temperatures = model(observation_time)
-        predicted_cold_pair = predicted_temperatures[:, (0, 2)]
+        predicted_cold_pair = model(observation_time)[:, (0, 2)]
         observation_loss = (
             (
                 predicted_cold_pair - observed_temperatures
@@ -412,7 +340,7 @@ def train_inverse_contact_resistance(
             float(model.cold_contact_resistance.detach().cpu())
         )
 
-    return InverseContactTrainingResult(
+    return PiecewiseInverseContactTrainingResult(
         model=model,
         history=InverseContactTrainingHistory(
             total_loss=tuple(total_losses),
@@ -421,14 +349,17 @@ def train_inverse_contact_resistance(
             cold_contact_resistance=tuple(resistances),
         ),
         device=str(device),
+        collocation_time=tuple(
+            float(value) for value in collocation_time.detach().cpu().reshape(-1)
+        ),
     )
 
 
-def validate_inverse_contact_resistance(
-    training: InverseContactTrainingResult,
-    problem: IdealInverseContactProblem,
-) -> InverseContactResistanceValidation:
-    """Compare the inferred parameter with dense truth and unseen regimes."""
+def validate_piecewise_inverse_contact_resistance(
+    training: PiecewiseInverseContactTrainingResult,
+    problem: IdealPiecewiseInverseContactProblem,
+) -> PiecewiseInverseContactResistanceValidation:
+    """Compare pulse inference with dense truth and two unseen regimes."""
 
     experiment = problem.experiment
     observations = problem.observations
@@ -444,6 +375,10 @@ def validate_inverse_contact_resistance(
     )
     conventional_fit = fit_cold_contact_resistance((problem.dataset,))
     transfer_datasets = reference_contact_resistance_dataset_split()
+    training_metrics = evaluate_contact_resistance_regime(
+        inferred_resistance,
+        problem.dataset,
+    )
     validation_metrics = evaluate_contact_resistance_regime(
         inferred_resistance,
         transfer_datasets.validation[0],
@@ -453,7 +388,6 @@ def validate_inverse_contact_resistance(
         transfer_datasets.test[0],
     )
     absolute_error = abs(inferred_resistance - true_resistance)
-
     trajectory_errors = tuple(
         tuple(left - right for left, right in zip(predicted, expected))
         for predicted, expected in (
@@ -463,7 +397,13 @@ def validate_inverse_contact_resistance(
             (prediction.hot_exchanger, reference.hot_exchanger),
         )
     )
-    return InverseContactResistanceValidation(
+    jumps = training.model.boundary_temperature_jumps()
+    max_jump = (
+        0.0
+        if jumps.numel() == 0
+        else float(jumps.abs().max().detach().cpu())
+    )
+    return PiecewiseInverseContactResistanceValidation(
         true_cold_contact_resistance=true_resistance,
         inferred_cold_contact_resistance=inferred_resistance,
         conventional_cold_contact_resistance=(
@@ -495,16 +435,18 @@ def validate_inverse_contact_resistance(
                 )
             )
         ),
+        max_boundary_temperature_jump=max_jump,
+        training_regime_metrics=training_metrics,
         validation_regime_metrics=validation_metrics,
         test_regime_metrics=test_metrics,
     )
 
 
 def main() -> None:
-    """Run the ideal constant-current inverse contact baseline."""
+    """Run the ideal switched-current inverse contact baseline."""
 
     parser = argparse.ArgumentParser(
-        description="Infer cold contact resistance with the four-node PINN"
+        description="Infer cold contact resistance with the piecewise PINN"
     )
     parser.add_argument("--epochs", type=int, default=8_000)
     parser.add_argument(
@@ -516,7 +458,7 @@ def main() -> None:
     parser.add_argument(
         "--observation-interval",
         type=float,
-        default=5.0,
+        default=1.0,
         help="ideal cold-pair observation spacing in seconds",
     )
     parser.add_argument(
@@ -526,19 +468,23 @@ def main() -> None:
     )
     arguments = parser.parse_args()
 
-    problem = ideal_inverse_contact_problem(
+    problem = ideal_piecewise_inverse_contact_problem(
         observation_interval=arguments.observation_interval
     )
-    training = train_inverse_contact_resistance(
+    training = train_piecewise_inverse_contact_resistance(
         problem,
-        InverseContactResistanceConfig(
+        PiecewiseInverseContactResistanceConfig(
             epochs=arguments.epochs,
             initial_cold_contact_resistance=arguments.initial_resistance,
             device=arguments.device,
         ),
     )
-    validation = validate_inverse_contact_resistance(training, problem)
+    validation = validate_piecewise_inverse_contact_resistance(
+        training,
+        problem,
+    )
     print(f"device: {training.device}")
+    print(f"segments: {len(training.model.segment_boundaries) - 1}")
     print(f"cold-pair observation times: {len(problem.observations.time)}")
     print(
         "cold contact resistance: "
@@ -557,11 +503,8 @@ def main() -> None:
         f"observations {training.history.observation_loss[-1]:.6e}"
     )
     print(
-        "constant-current trajectory RMSE: "
-        f"CF {validation.cold_face_trajectory_rmse:.6f} K, "
-        f"HF {validation.hot_face_trajectory_rmse:.6f} K, "
-        f"CX {validation.cold_exchanger_trajectory_rmse:.6f} K, "
-        f"HX {validation.hot_exchanger_trajectory_rmse:.6f} K"
+        "maximum boundary temperature jump: "
+        f"{validation.max_boundary_temperature_jump:.6e} K"
     )
     print(
         "unseen pulse all-sensor RMSE: "
