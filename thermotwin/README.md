@@ -472,6 +472,40 @@ across PyTorch versions or hardware is possible.
 Physics and code exercises for this stage are in
 [`notes/15_contact_forward_pinn.md`](notes/15_contact_forward_pinn.md).
 
+## Piecewise switched-current contact PINN
+
+The optional `thermotwin.piecewise_contact_forward_pinn` module extends the
+four-state forward PINN to piecewise-constant current without forcing one
+smooth network to represent discontinuous temperature derivatives. For the
+established training pulse it uses three smooth subnetworks:
+
+~~~text
+0--5 s: 0 A  |  5--20 s: 1 A  |  20--60 s: 0 A
+~~~
+
+Each subnetwork begins exactly at the previous subnetwork's final four
+temperatures. Temperatures are therefore continuous at both switches by
+construction, while left- and right-side derivatives may differ. Current is
+evaluated with the same right-continuous convention as RK4. Duration-weighted
+midpoint collocation points exclude the switches, where a single classical
+derivative is not defined.
+
+Run the 5,000-epoch CPU comparison with:
+
+~~~bash
+python3 -m thermotwin.piecewise_contact_forward_pinn_report
+~~~
+
+The frozen result has exactly zero constructed boundary-temperature jump. Its
+cold-face, hot-face, cold-exchanger, and hot-exchanger RMSE values against the
+transition-splitting RK4 reference are approximately 0.008862 K, 0.001989 K,
+0.009327 K, and 0.004628 K. RK4 temperatures remain withheld from training.
+
+This stage validates switched-current forward dynamics. Contact resistance is
+still fixed; the next learned stage will add a trainable cold contact to this
+piecewise architecture. Exercises are in
+[`notes/17_piecewise_contact_forward_pinn.md`](notes/17_piecewise_contact_forward_pinn.md).
+
 ## Inverse cold-contact-resistance PINN
 
 The optional `thermotwin.inverse_contact_resistance` module reuses the

@@ -24,6 +24,7 @@ choice. They are intentionally separate from the package README.
 | [14 — Contact-resistance experiment](14_contact_resistance_experiment.md) | Understand pulse design, scalar inference, held-out regimes, repeated noise, fixed bias, sensor lag, informative missingness, restricted sensor sets, combined imperfections, empirical statistics, and limitations | Not started |
 | [15 — Contact-aware forward PINN](15_contact_forward_pinn.md) | Understand four learned temperatures, four contact energy residuals, exact initial conditions, autograd, loss construction, RK4 validation, and the bridge to inverse contact inference | Not started |
 | [16 — Inverse contact-resistance PINN](16_inverse_contact_resistance_pinn.md) | Understand positive resistance parameterization, sparse cold-pair observations, joint physics/data loss, identifiability, conventional comparison, and parameter transfer to unseen pulses | Not started |
+| [17 — Piecewise contact forward PINN](17_piecewise_contact_forward_pinn.md) | Understand switched-current physics, continuous temperatures, discontinuous rates, domain decomposition, exact interface chaining, collocation, routing, and RK4 validation | Not started |
 
 Suggested statuses are `Not started`, `Draft`, `Revising`, and `Reviewed`.
 

@@ -1116,18 +1116,65 @@ python3 -m thermotwin.inverse_contact_resistance_report
 ~~~
 
 The ideal learned result does not yet use the noisy, biased, lagged, incomplete,
-or restricted pulse datasets documented above. A time-varying-control PINN is
-required before those exact datasets can enter neural inverse training without
-changing their experimental meaning.
+or restricted pulse datasets documented above. The piecewise forward PINN in
+the next section now handles the control switches, but it must be extended to
+inverse training before those exact datasets can enter neural parameter
+inference without changing their experimental meaning.
 
 ---
 
-## 27. Planned progression
+## 27. Piecewise switched-current forward PINN
+
+The optional `piecewise_contact_forward_pinn.py` workflow now represents the
+established training pulse directly with a physics-only neural solver:
+
+~~~text
+0--5 s: 0 A  |  5--20 s: 1 A  |  20--60 s: 0 A
+~~~
+
+A separate four-output smooth subnetwork covers each constant-current
+interval. The next segment starts from the previous segment's predicted final
+four-temperature state. Therefore all face and exchanger temperatures are
+exactly continuous at 5 s and 20 s, while their rates may change
+discontinuously when the Peltier and Joule terms switch.
+
+The PINN uses the conventional solver's right-continuous current convention:
+the value at 5 s is 1 A and the value at 20 s is 0 A. Midpoint collocation
+times exclude both switches because the two-sided classical derivative is not
+defined there. RK4 reference temperatures remain withheld from training.
+
+Run the frozen 5,000-epoch CPU comparison with:
+
+~~~bash
+python3 -m thermotwin.piecewise_contact_forward_pinn_report
+~~~
+
+The current result has a constructed maximum boundary-temperature jump of
+exactly 0 K. Its RK4 comparison gives:
+
+| State | RMSE |
+| --- | ---: |
+| Cold face | 0.008862 K |
+| Hot face | 0.001989 K |
+| Cold exchanger | 0.009327 K |
+| Hot exchanger | 0.004628 K |
+
+This is a fixed-parameter forward validation, not yet an inference result. It
+establishes the segmented temperature and residual representation before the
+cold contact resistance is made trainable on pulse observations.
+
+The implementation details and exercises are in
+[`notes/17_piecewise_contact_forward_pinn.md`](notes/17_piecewise_contact_forward_pinn.md).
+
+---
+
+## 28. Planned progression
 
 The next controlled extensions are:
 
-1. extend the PINN to switched current and compare it with conventional least
-   squares on identical imperfect pulse observations;
+1. make the cold contact resistance trainable in the piecewise PINN and
+   compare it with conventional least squares on identical imperfect pulse
+   observations;
 2. infer contact resistance while perturbing other assumed-known parameters;
 3. study simultaneous contact, capacitance, conductance, bias, and lag
    ambiguities one small set at a time;

@@ -205,12 +205,15 @@ def contact_physics_residuals(
     experiment: FourNodeContactExperiment,
     *,
     cold_contact_resistance: Optional[Tensor] = None,
+    current_values: Optional[Tensor] = None,
 ) -> ContactPINNResiduals:
     """Evaluate all four contact-aware ODE residuals at supplied times.
 
     A differentiable cold contact resistance may replace the fixed experiment
-    value for inverse parameter inference. The forward model omits this
-    argument and therefore retains the experiment's known resistance.
+    value for inverse parameter inference. Supplied current values allow a
+    piecewise model to evaluate known scheduled current at each time. The
+    original forward model omits both arguments and retains its known constant
+    experiment values.
     """
 
     if time.ndim == 1:
@@ -250,7 +253,16 @@ def contact_physics_residuals(
 
     thermoelectric = experiment.thermoelectric_parameters
     thermal = experiment.thermal_parameters
-    current = _constant_current(experiment)
+    if current_values is None:
+        current = _constant_current(experiment)
+    else:
+        current = current_values
+        if current.ndim == 1:
+            current = current.reshape(-1, 1)
+        if current.ndim != 2 or current.shape != differentiable_time.shape:
+            raise ValueError(
+                "current values must match the supplied time shape"
+            )
     face_difference = hot_face - cold_face
     half_joule_heat = (
         0.5 * current**2 * thermoelectric.electrical_resistance
@@ -370,7 +382,7 @@ def train_contact_forward_pinn(
 
 
 def predict_contact_trajectory(
-    model: ContactForwardPINN,
+    model: nn.Module,
     times: Sequence[float],
 ) -> FourNodeContactTemperatureTrajectory:
     """Evaluate a trained contact PINN in the conventional trajectory type."""
@@ -403,7 +415,7 @@ def _rmse(errors: Sequence[float]) -> float:
 
 
 def validate_contact_pinn_against_rk4(
-    model: ContactForwardPINN,
+    model: nn.Module,
     experiment: FourNodeContactExperiment,
 ) -> ContactPINNValidation:
     """Compare all four learned histories with withheld RK4 temperatures."""
