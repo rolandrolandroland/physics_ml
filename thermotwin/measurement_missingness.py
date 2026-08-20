@@ -4,6 +4,12 @@ from dataclasses import dataclass, replace
 import math
 from typing import Optional, Tuple
 
+from .dataset_metadata import (
+    MetadataSetting,
+    ObservationProcessStep,
+    append_observation_process_step,
+)
+
 from .measurement_bias import FixedTemperatureBias
 from .measurement_lag import (
     FirstOrderTemperatureLag,
@@ -158,9 +164,37 @@ def apply_deterministic_temperature_missingness(
     if not retained_observations:
         raise ValueError("missingness configuration removes every observation")
 
+    step_settings = []
+    for index, outage in enumerate(missingness_model.outages):
+        step_settings.extend(
+            (
+                MetadataSetting(
+                    f"outage_{index}_sensor",
+                    outage.sensor_name,
+                ),
+                MetadataSetting(
+                    f"outage_{index}_start_s",
+                    outage.start_time,
+                ),
+                MetadataSetting(
+                    f"outage_{index}_end_s",
+                    outage.end_time,
+                ),
+            )
+        )
+    provenance = dataset.provenance
+    if len(retained_observations) < len(dataset.observations):
+        provenance = append_observation_process_step(
+            provenance,
+            ObservationProcessStep(
+                "deterministic_temperature_missingness",
+                tuple(step_settings),
+            ),
+        )
     incomplete_dataset = replace(
         dataset,
         observations=retained_observations,
+        provenance=provenance,
     )
     return TemperatureMissingnessResult(
         dataset=incomplete_dataset,

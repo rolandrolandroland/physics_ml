@@ -10,6 +10,7 @@ from .contact_experiments import (
     run_four_node_contact_experiment,
 )
 from .controls import PiecewiseConstantCurrent
+from .dataset_metadata import ContactExperimentMetadata
 from .virtual_test_stand import (
     ObservationDataset,
     ideal_four_sensor_test_stand,
@@ -277,6 +278,12 @@ def simulate_contact_resistance_observations(
         current=regime.current,
         test_stand=ideal_four_sensor_test_stand(
             sampling_interval=sampling_interval
+        ),
+        experiment_metadata=ContactExperimentMetadata.from_experiment(
+            experiment,
+            experiment_name="cold_contact_resistance_inference",
+            regime_name=regime.name,
+            split=regime.split,
         ),
     )
 

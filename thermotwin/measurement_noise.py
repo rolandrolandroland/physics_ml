@@ -5,6 +5,12 @@ import math
 import random
 from typing import Optional, Tuple
 
+from .dataset_metadata import (
+    MetadataSetting,
+    ObservationProcessStep,
+    append_observation_process_step,
+)
+
 from .virtual_test_stand import (
     ObservationDataset,
     run_ideal_contact_reference_test_stand,
@@ -111,9 +117,39 @@ def apply_gaussian_temperature_noise(
             )
         )
 
+    step_settings = [
+        MetadataSetting(
+            "default_standard_deviation_K",
+            noise_model.default_standard_deviation,
+        ),
+        MetadataSetting("random_seed", noise_model.random_seed),
+    ]
+    step_settings.extend(
+        MetadataSetting(
+            f"sensor_standard_deviation_K:{sensor_name}",
+            standard_deviation,
+        )
+        for sensor_name, standard_deviation in (
+            noise_model.sensor_standard_deviations
+        )
+    )
+    noise_changes_values = any(
+        noise_model.standard_deviation_for(sensor.name) > 0.0
+        for sensor in dataset.sensors
+    )
+    provenance = dataset.provenance
+    if noise_changes_values:
+        provenance = append_observation_process_step(
+            provenance,
+            ObservationProcessStep(
+                "gaussian_temperature_noise",
+                tuple(step_settings),
+            ),
+        )
     noisy_dataset = replace(
         dataset,
         observations=tuple(noisy_observations),
+        provenance=provenance,
     )
     return TemperatureNoiseResult(
         dataset=noisy_dataset,

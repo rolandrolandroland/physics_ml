@@ -4,6 +4,12 @@ from dataclasses import dataclass, replace
 import math
 from typing import Optional, Tuple
 
+from .dataset_metadata import (
+    MetadataSetting,
+    ObservationProcessStep,
+    append_observation_process_step,
+)
+
 from .measurement_noise import (
     GaussianTemperatureNoise,
     apply_gaussian_temperature_noise,
@@ -95,9 +101,30 @@ def apply_fixed_temperature_bias(
         )
         for observation in dataset.observations
     )
+    step_settings = [
+        MetadataSetting("default_bias_K", bias_model.default_bias),
+    ]
+    step_settings.extend(
+        MetadataSetting(f"sensor_bias_K:{sensor_name}", bias)
+        for sensor_name, bias in bias_model.sensor_biases
+    )
+    bias_changes_values = any(
+        bias_model.bias_for(sensor.name) != 0.0
+        for sensor in dataset.sensors
+    )
+    provenance = dataset.provenance
+    if bias_changes_values:
+        provenance = append_observation_process_step(
+            provenance,
+            ObservationProcessStep(
+                "fixed_temperature_bias",
+                tuple(step_settings),
+            ),
+        )
     biased_dataset = replace(
         dataset,
         observations=biased_observations,
+        provenance=provenance,
     )
     return TemperatureBiasResult(
         dataset=biased_dataset,

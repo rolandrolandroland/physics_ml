@@ -24,6 +24,10 @@ The relevant files are:
 - `thermotwin/measurement_bias.py`: fixed per-sensor temperature offsets;
 - `thermotwin/measurement_lag.py`: first-order dynamic sensor response;
 - `thermotwin/measurement_missingness.py`: deterministic sensor outages;
+- `thermotwin/dataset_metadata.py`: reproducible experiment truth and ordered
+  observation-processing provenance;
+- `thermotwin/dataset_quality.py`: completeness, range, truth, provenance, and
+  whole-regime split checks;
 - `tests/test_virtual_test_stand.py`: schema, timing, interpolation, current,
   and validation checks;
 - `tests/test_measurement_noise.py`: determinism, zero-noise, per-sensor, and
@@ -870,6 +874,62 @@ exercises in `13_measurement_imperfections.md`.
 
 ---
 
+## Block 8 — Dataset provenance and quality
+
+### Exercise 54: Separate ground-truth metadata from hidden trajectory truth
+
+The dataset now stores the physical parameter values and complete experiment
+configuration, but it still does not store the dense RK4 temperature history.
+
+1. Why are known synthetic parameters required for evaluation?
+2. Why would dense hidden temperatures be a different kind of information?
+3. Which one may an inference routine use during fitting?
+4. Which one should evaluation code use after fitting?
+5. Explain why recording ground truth does not itself prove hardware realism.
+
+**My explanation:**
+
+### Exercise 55: Reconstruct an experiment from provenance
+
+Inspect `dataset.provenance.experiment`, then answer:
+
+1. Which three thermoelectric parameters are recorded?
+2. Which eight four-node thermal parameters are recorded?
+3. How are scalar and piecewise currents distinguished?
+4. What do `regime_name` and `split` prevent us from forgetting?
+5. What object does `to_experiment()` reconstruct?
+6. Confirm that reconstructing the experiment does not reconstruct its solved
+   temperature trajectory.
+
+**My code trace:**
+
+### Exercise 56: Interpret the quality report
+
+Run:
+
+~~~bash
+python3 -m thermotwin.dataset_quality
+~~~
+
+1. Why are there 732 expected records?
+2. What does 100 percent completeness establish?
+3. Why must regime names be unique across splits?
+4. Why does a `PASS` for ground-truth availability not establish
+   identifiability?
+5. Predict the completeness of the 233-record controlled-outage dataset.
+6. Name two hardware-data quality checks that this synthetic audit does not
+   yet contain.
+
+**My interpretation:**
+
+### Checkpoint 8
+
+Ask Codex to review Exercises 54–56. Be prepared to explain why reproducible
+provenance, data completeness, parameter identifiability, and hardware validity
+are four different claims.
+
+---
+
 ## Interview teach-back
 
 ### 30-second explanation
@@ -897,6 +957,8 @@ future inference.
 5. What does interpolation add, and what error can it introduce?
 6. Why begin with all four sensors before studying restricted observability?
 7. Which observation imperfection should be added next, and why?
+8. Why can a dataset expose synthetic parameter truth without exposing dense
+   temperature truth to the fitting algorithm?
 
 **My answers:**
 

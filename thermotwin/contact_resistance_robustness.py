@@ -15,6 +15,11 @@ from .contact_resistance_inference import (
     fit_cold_contact_resistance,
     simulate_contact_resistance_observations,
 )
+from .dataset_metadata import (
+    MetadataSetting,
+    ObservationProcessStep,
+    append_observation_process_step,
+)
 from .measurement_lag import (
     FirstOrderTemperatureLag,
     apply_first_order_temperature_lag,
@@ -117,6 +122,22 @@ def downsample_observation_dataset(
         dataset,
         observations=retained,
         sampling_interval=float(sampling_interval),
+        provenance=(
+            dataset.provenance
+            if sampling_interval == dataset.sampling_interval
+            else append_observation_process_step(
+                dataset.provenance,
+                ObservationProcessStep(
+                    "output_downsampling",
+                    (
+                        MetadataSetting(
+                            "sampling_interval_s",
+                            sampling_interval,
+                        ),
+                    ),
+                ),
+            )
+        ),
     )
 
 
@@ -139,6 +160,14 @@ def lag_contact_resistance_dataset_split(
             raise ValueError(
                 "dense lag interval must not exceed output interval"
             )
+        if all(
+            lag_model.time_constant_for(sensor.name) == 0.0
+            for sensor in dataset.observations.sensors
+        ):
+            return apply_first_order_temperature_lag(
+                dataset.observations,
+                lag_model,
+            ).dataset
         dense = simulate_contact_resistance_observations(
             dataset.regime,
             cold_contact_resistance=REFERENCE_COLD_CONTACT_RESISTANCE,
@@ -193,6 +222,23 @@ def restrict_observation_dataset(
         dataset,
         sensors=sensors,
         observations=observations,
+        provenance=(
+            dataset.provenance
+            if len(sensors) == len(dataset.sensors)
+            else append_observation_process_step(
+                dataset.provenance,
+                ObservationProcessStep(
+                    "sensor_restriction",
+                    tuple(
+                        MetadataSetting(
+                            f"retained_sensor_{index}",
+                            sensor.name,
+                        )
+                        for index, sensor in enumerate(sensors)
+                    ),
+                ),
+            )
+        ),
     )
 
 
@@ -226,6 +272,22 @@ def match_observation_schema(
         restricted_reference,
         observations=observations,
         sampling_interval=schema.sampling_interval,
+        provenance=append_observation_process_step(
+            restricted_reference.provenance,
+            ObservationProcessStep(
+                "matched_observation_schema",
+                (
+                    MetadataSetting(
+                        "retained_observation_count",
+                        len(observations),
+                    ),
+                    MetadataSetting(
+                        "schema_sampling_interval_s",
+                        schema.sampling_interval,
+                    ),
+                ),
+            ),
+        ),
     )
 
 

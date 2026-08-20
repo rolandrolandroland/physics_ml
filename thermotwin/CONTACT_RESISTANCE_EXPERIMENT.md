@@ -73,6 +73,27 @@ This second result measures empirical variation under one isolated synthetic
 noise model. It is not a hardware uncertainty interval. Section 19 derives
 the statistics, traces the code, and explains the limits of the conclusion.
 
+### 2.1 Dataset provenance and quality gate
+
+Each of the three whole-regime datasets now carries its complete physical
+configuration and synthetic parameter truth, including the current schedule,
+integration step, initial and reservoir conditions, and split identity. The
+observation table still excludes dense RK4 trajectories.
+
+Run the compact quality gate with:
+
+~~~bash
+python3 -m thermotwin.dataset_quality
+~~~
+
+The frozen clean collection contains 732 of 732 expected sensor records. It
+passes checks for recorded provenance, available ground truth, unique regime
+names, and complete train/validation/test coverage. Noise seeds and applied
+measurement settings are added to the ordered dataset provenance when those
+transformations are used. This audit establishes reproducibility and split
+integrity; it does not establish hardware realism or parameter
+identifiability.
+
 ---
 
 ## 3. Physical topology

@@ -5,6 +5,10 @@ This document is the tutorial-style companion to the concise
 physical meaning of its equations, how the conventional and learned models are
 connected, and how to run and validate each stage.
 
+The complete development sequence, revised definitions of done, and current
+milestone status are maintained in [`ROADMAP.md`](ROADMAP.md). That roadmap
+supersedes the original planning draft when their requirements differ.
+
 ThermoTwin is being developed as a physics-informed digital twin and experiment
 planner for a modular thermoelectric heat pump. The current package is the
 foundation of that larger goal. It contains:
@@ -23,28 +27,32 @@ foundation of that larger goal. It contains:
 12. First-order per-sensor dynamic lag applied before output sampling.
 13. Deterministic per-sensor missing-observation intervals.
 14. Whole-regime train, validation, and test experiment datasets.
-15. Conventional least-squares inference of one cold contact resistance.
-16. A 100-trial Gaussian-noise robustness study of that inference.
-17. Fixed-bias inference cases separating individual, common, and differential
+15. Self-contained experiment/ground-truth provenance and ordered measurement
+    transformation histories on generated datasets.
+16. An automated dataset-quality audit for completeness, ranges, provenance,
+    truth availability, and whole-regime split integrity.
+17. Conventional least-squares inference of one cold contact resistance.
+18. A 100-trial Gaussian-noise robustness study of that inference.
+19. Fixed-bias inference cases separating individual, common, and differential
     cold-sensor offsets.
-18. Dense-before-sparse sensor-lag inference cases.
-19. Regime-aligned turn-off missingness and a local information metric.
-20. Cold-face, cold-exchanger, hot-pair, and all-sensor availability studies.
-21. A 100-trial combined-imperfections inference study.
-22. A two-output forward physics-informed neural network, or PINN.
-23. A four-output contact-aware forward PINN with fixed physical parameters.
-24. A domain-decomposed four-output contact PINN for piecewise-constant
+20. Dense-before-sparse sensor-lag inference cases.
+21. Regime-aligned turn-off missingness and a local information metric.
+22. Cold-face, cold-exchanger, hot-pair, and all-sensor availability studies.
+23. A 100-trial combined-imperfections inference study.
+24. A two-output forward physics-informed neural network, or PINN.
+25. A four-output contact-aware forward PINN with fixed physical parameters.
+26. A domain-decomposed four-output contact PINN for piecewise-constant
     current, with exact temperature continuity at current switches.
-25. A piecewise inverse PINN that infers one shared cold contact resistance
+27. A piecewise inverse PINN that infers one shared cold contact resistance
     from the established training pulse.
-26. A one-command PINN showcase combining physics-only prediction, inverse
+28. A one-command PINN showcase combining physics-only prediction, inverse
     calibration, withheld-state validation, and unseen-control transfer.
-27. RK4-versus-PINN comparison reports for the learned topologies.
-28. A first inverse PINN that infers the module thermal conductance $K$ from
+29. RK4-versus-PINN comparison reports for the learned topologies.
+30. A first inverse PINN that infers the module thermal conductance $K$ from
    sparse synthetic temperature observations.
-29. A smooth four-state inverse PINN that infers the cold contact resistance and
+31. A smooth four-state inverse PINN that infers the cold contact resistance and
     transfers it to unseen pulse regimes.
-30. Unit, sign, energy, sampling, measurement, numerical, PINN, and
+32. Unit, sign, energy, sampling, measurement, numerical, PINN, and
     identifiability tests.
 
 The package does **not** yet represent a hardware-validated digital twin. Its
@@ -55,11 +63,13 @@ generated their synthetic reference data.
 
 ## 1. How to use this documentation
 
-There are three documentation layers:
+There are five documentation layers:
 
 - [`README.md`](README.md) is the concise package reference.
 - `README_detailed.md`, this file, is the step-by-step technical walkthrough.
 - [`PINN_SHOWCASE.md`](PINN_SHOWCASE.md) is the focused reproducible case study.
+- [`ROADMAP.md`](ROADMAP.md) defines the complete project sequence and current
+  milestone exit criteria.
 - [`notes/00_index.md`](notes/00_index.md) links to learning exercises,
   user-authored explanations, predictions, corrections, and derivations.
 
@@ -82,7 +92,7 @@ standard library. Run all current ThermoTwin tests with:
 python3 -m unittest discover -s tests
 ```
 
-The current suite contains 266 focused tests. Optional learned-model and report
+The current suite contains 278 focused tests. Optional learned-model and report
 tests are skipped
 when their optional dependencies are not installed.
 
@@ -147,6 +157,13 @@ Generate the contact-aware comparison and resistance sweep:
 
 ~~~bash
 python3 -m thermotwin.contact_report
+~~~
+
+Audit virtual dataset provenance, completeness, ranges, and whole-regime
+splits:
+
+~~~bash
+python3 -m thermotwin.dataset_quality
 ~~~
 
 Run the first inverse problem and infer $K$:
@@ -1332,6 +1349,91 @@ print(len(result.dataset.observations))
 This first model describes a known deterministic outage. It does not yet
 represent random packet loss, value-dependent failure, sensor-health states,
 imputation, or a calibrated hardware missingness mechanism.
+
+### 9.17 Self-contained dataset provenance and quality audit
+
+The measurement modules previously retained individual transformation
+configurations in their result wrappers. Generated observation tables now also
+carry a consistent `DatasetProvenance` record. This closes an important gap:
+an evaluation dataset can state its ground truth and how it was produced
+without including the dense trajectory that an inference method must not see.
+
+The provenance contains a `ContactExperimentMetadata` object with:
+
+- experiment and regime names;
+- the `train`, `validation`, `test`, or `unsplit` assignment;
+- all three thermoelectric parameters;
+- all eight four-node thermal parameters;
+- all four initial temperatures;
+- both reservoir temperatures and external heat inputs;
+- duration and RK4 integration time step; and
+- the scalar or complete piecewise-constant current schedule.
+
+`ContactExperimentMetadata.to_experiment()` reconstructs the recorded
+`FourNodeContactExperiment`. This is a configuration/ground-truth record, not
+a stored solution. `ObservationDataset` still has no dense `trajectory` or
+`truth` attribute.
+
+Provenance also contains ordered `ObservationProcessStep` records. For the
+combined incomplete baseline, the order is:
+
+~~~text
+ideal dense sampling
+-> first-order temperature lag
+-> output sampling
+-> fixed temperature bias
+-> Gaussian temperature noise
+-> deterministic temperature missingness
+~~~
+
+Each applied step stores its actual settings. The Gaussian step records the
+random seed and standard deviations. Lag and bias record defaults and named
+sensor overrides. Every outage records its sensor and inclusive start/end
+times. Transformations that have no effect preserve the exact input dataset;
+their configuration remains available in the result wrapper.
+
+Minimal provenance inspection:
+
+~~~python
+from thermotwin import run_incomplete_contact_reference_test_stand
+
+result = run_incomplete_contact_reference_test_stand()
+provenance = result.dataset.provenance
+
+print(provenance.experiment.regime_name)
+print(provenance.experiment.thermal_parameters.cold_contact_resistance)
+print(tuple(step.name for step in provenance.observation_steps))
+reconstructed_experiment = provenance.experiment.to_experiment()
+~~~
+
+The separate [dataset_quality.py](dataset_quality.py) module calculates a
+deterministic summary for one dataset or a collection. For each dataset it
+reports:
+
+- observed and expected records;
+- total and per-sensor missing counts;
+- completeness fraction;
+- observed and expected measurement-time counts;
+- temperature and current ranges;
+- provenance and ground-truth availability; and
+- ordered observation-process names.
+
+For a collection it additionally verifies unique regime names and the presence
+of whole training, validation, and test regimes. Run the frozen report with:
+
+~~~bash
+python3 -m thermotwin.dataset_quality
+~~~
+
+The current ideal split contains three entire experiments, 732 observed of 732
+expected records, complete provenance and physical truth, and one distinct
+training, validation, and test regime. All quality gates pass. The controlled
+20--30 s cold-face outage separately reports 233 of 244 records: exactly 11
+missing cold-face readings and no invented replacement values.
+
+The quality audit verifies schema and provenance. It does not prove that the
+synthetic physics matches hardware, that a noise distribution is realistic, or
+that a parameter is identifiable.
 
 ---
 

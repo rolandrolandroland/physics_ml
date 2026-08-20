@@ -4,6 +4,9 @@ For a step-by-step explanation of the physics, code paths, conventional solver,
 forward PINN, inverse parameter inference, tests, and current limitations, see
 [`README_detailed.md`](README_detailed.md).
 
+The governing project sequence, revised milestone definitions, current status,
+and completion criteria are in [`ROADMAP.md`](ROADMAP.md).
+
 ## PINN showcase
 
 For the shortest end-to-end demonstration, see
@@ -143,10 +146,35 @@ from thermotwin import run_ideal_contact_reference_test_stand
 dataset = run_ideal_contact_reference_test_stand()
 print(len(dataset.measurement_times))  # 61
 print(len(dataset.observations))       # 244
+print(dataset.provenance.experiment.regime_name)
+print(dataset.provenance.experiment.thermal_parameters)
 ~~~
 
 This baseline has no noise, bias, lag, or missing readings. Its exercises are
 in [notes/12_virtual_test_stand.md](notes/12_virtual_test_stand.md).
+
+Every high-level generated dataset now includes self-contained provenance
+without exposing its dense RK4 trajectory. The provenance records the complete
+physical experiment, ground-truth thermoelectric and thermal parameters,
+initial and reservoir temperatures, external heat inputs, duration,
+integration step, current schedule, regime name, and train/validation/test
+assignment. It also records the ordered observation pipeline. Applied Gaussian
+noise includes its random seed; bias, lag, sampling, and outage steps include
+their complete settings.
+
+Run the compact whole-regime dataset audit with:
+
+~~~bash
+python3 -m thermotwin.dataset_quality
+~~~
+
+The frozen audit checks record counts, completeness, temperature/current
+ranges, provenance, ground-truth availability, unique regime names, and the
+presence of whole training, validation, and test experiments. It currently
+reports 732 of 732 expected ideal observations and passes every provenance and
+split-integrity check. Missing-observation datasets use the same summary to
+report the exact unavailable count rather than treating absent readings as
+zeros or `NaN` placeholders.
 
 ## Reproducible temperature noise
 

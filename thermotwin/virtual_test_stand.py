@@ -12,6 +12,12 @@ from .contact_experiments import (
 )
 from .contact_transient import FourNodeContactTemperatureTrajectory
 from .controls import CurrentInput, current_at
+from .dataset_metadata import (
+    ContactExperimentMetadata,
+    DatasetProvenance,
+    MetadataSetting,
+    ObservationProcessStep,
+)
 
 
 class TemperatureSensorLocation(str, Enum):
@@ -102,6 +108,7 @@ class ObservationDataset:
     time_unit: str = "s"
     temperature_unit: str = "K"
     current_unit: str = "A"
+    provenance: DatasetProvenance | None = None
 
     def __post_init__(self) -> None:
         observations = tuple(self.observations)
@@ -129,6 +136,11 @@ class ObservationDataset:
             )
         ):
             raise ValueError("observation units must be nonempty")
+        if self.provenance is not None and not isinstance(
+            self.provenance,
+            DatasetProvenance,
+        ):
+            raise ValueError("dataset provenance must be valid metadata")
 
         sensor_by_name = {sensor.name: sensor for sensor in sensors}
         known_names = set(sensor_by_name)
@@ -291,6 +303,7 @@ def observe_contact_trajectory(
     *,
     current: CurrentInput,
     test_stand: IdealVirtualTestStand,
+    experiment_metadata: ContactExperimentMetadata | None = None,
 ) -> ObservationDataset:
     """Sample ideal long-form sensor observations from hidden trajectory truth."""
 
@@ -324,10 +337,32 @@ def observe_contact_trajectory(
                 )
             )
 
+    provenance = None
+    if experiment_metadata is not None:
+        provenance = DatasetProvenance(
+            experiment=experiment_metadata,
+            observation_steps=(
+                ObservationProcessStep(
+                    name="ideal_sampling",
+                    settings=(
+                        MetadataSetting(
+                            "source_integration_time_step_s",
+                            experiment_metadata.integration_time_step,
+                        ),
+                        MetadataSetting(
+                            "output_sampling_interval_s",
+                            test_stand.sampling_interval,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
     return ObservationDataset(
         observations=tuple(observations),
         sensors=test_stand.sensors,
         sampling_interval=test_stand.sampling_interval,
+        provenance=provenance,
     )
 
 
@@ -373,5 +408,10 @@ def run_ideal_contact_reference_test_stand(
         current=experiment.current,
         test_stand=ideal_four_sensor_test_stand(
             sampling_interval=sampling_interval
+        ),
+        experiment_metadata=ContactExperimentMetadata.from_experiment(
+            experiment,
+            experiment_name="contact_reference",
+            regime_name="constant_current_reference",
         ),
     )

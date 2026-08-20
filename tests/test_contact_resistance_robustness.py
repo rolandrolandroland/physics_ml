@@ -74,7 +74,13 @@ class ContactResistanceRobustnessUtilityTests(unittest.TestCase):
         )
         matched = match_observation_schema(ideal, restricted)
 
-        self.assertEqual(matched, restricted)
+        self.assertEqual(matched.observations, restricted.observations)
+        self.assertEqual(matched.sensors, restricted.sensors)
+        self.assertEqual(matched.sampling_interval, restricted.sampling_interval)
+        self.assertEqual(
+            matched.provenance.observation_steps[-1].name,
+            "matched_observation_schema",
+        )
         self.assertEqual(len(matched.observations), 117)
 
     def test_selected_sensor_fit_recovers_single_sensor_limit(self):

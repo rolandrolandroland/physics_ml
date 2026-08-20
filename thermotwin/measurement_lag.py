@@ -7,6 +7,11 @@ from typing import Optional, Tuple
 
 from .contact_experiments import constant_current_contact_reference_experiment
 from .controls import CurrentInput, current_at
+from .dataset_metadata import (
+    MetadataSetting,
+    ObservationProcessStep,
+    append_observation_process_step,
+)
 from .measurement_bias import (
     FixedTemperatureBias,
     apply_fixed_temperature_bias,
@@ -168,9 +173,33 @@ def apply_first_order_temperature_lag(
             )
         )
 
+    step_settings = [
+        MetadataSetting(
+            "default_time_constant_s",
+            lag_model.default_time_constant,
+        ),
+    ]
+    step_settings.extend(
+        MetadataSetting(f"sensor_time_constant_s:{sensor_name}", value)
+        for sensor_name, value in lag_model.sensor_time_constants
+    )
+    lag_changes_values = any(
+        lag_model.time_constant_for(sensor.name) > 0.0
+        for sensor in dataset.sensors
+    )
+    provenance = dataset.provenance
+    if lag_changes_values:
+        provenance = append_observation_process_step(
+            provenance,
+            ObservationProcessStep(
+                "first_order_temperature_lag",
+                tuple(step_settings),
+            ),
+        )
     lagged_dataset = replace(
         dataset,
         observations=tuple(lagged_observations),
+        provenance=provenance,
     )
     return TemperatureLagResult(
         dataset=lagged_dataset,
@@ -250,6 +279,18 @@ def _resample_lagged_dataset(
         time_unit=dense_dataset.time_unit,
         temperature_unit=dense_dataset.temperature_unit,
         current_unit=dense_dataset.current_unit,
+        provenance=append_observation_process_step(
+            dense_dataset.provenance,
+            ObservationProcessStep(
+                "output_sampling",
+                (
+                    MetadataSetting(
+                        "sampling_interval_s",
+                        sampling_interval,
+                    ),
+                ),
+            ),
+        ),
     )
 
 

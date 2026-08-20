@@ -66,6 +66,14 @@ from .virtual_test_stand import (
     run_ideal_contact_reference_test_stand,
 )
 
+from .dataset_metadata import (
+    ContactExperimentMetadata,
+    CurrentScheduleMetadata,
+    DatasetProvenance,
+    MetadataSetting,
+    ObservationProcessStep,
+)
+
 from .measurement_noise import (
     GaussianTemperatureNoise,
     TemperatureNoiseResult,
@@ -107,8 +115,11 @@ from .measurement_missingness import (
 
 __all__ = [
     "ContactExperimentResult",
+    "ContactExperimentMetadata",
     "ContactTrajectoryDiagnostics",
     "DeterministicTemperatureMissingness",
+    "CurrentScheduleMetadata",
+    "DatasetProvenance",
     "FourNodeContactExperiment",
     "FourNodeContactTemperatureRates",
     "FourNodeContactTemperatureTrajectory",
@@ -120,7 +131,9 @@ __all__ = [
     "IdealVirtualTestStand",
     "IncompleteTemperatureResult",
     "LaggedNoisyBiasedTemperatureResult",
+    "MetadataSetting",
     "ObservationDataset",
+    "ObservationProcessStep",
     "NoisyBiasedTemperatureResult",
     "SteadyStateTemperatures",
     "TemperatureRates",
