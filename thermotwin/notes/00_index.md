@@ -29,6 +29,7 @@ choice. They are intentionally separate from the package README.
 | [19 — COP operating maps](19_cop_operating_map.md) | Understand cooling/heating COP, current and lift sweeps, contact penalties, algebraic steady state, useful-capacity thresholds, and fair equal-load comparisons | Not started |
 | [20 — Pulse operating envelope](20_pulse_operating_envelope.md) | Understand how seconds-scale transient pulses connect to the steady COP map, fair objectives, mean/RMS current, storage drift, and negative control results | Not started |
 | [21 — PWM power electronics](21_pwm_power_electronics.md) | Understand direct versus smoothed PWM current, first and second current moments, averaged thermoelectric heat, converter loss, wall COP, code, tests, and next electrical extensions | Not started |
+| [22 — Material/geometry Bayesian co-design](22_material_geometry_bayesian_codesign.md) | Understand same-row public material data, module scaling, application objectives, space-filling design, cost-aware Bayesian optimization, random baselines, and as-built robustness | Not started |
 
 Suggested statuses are `Not started`, `Draft`, `Revising`, and `Reviewed`.
 

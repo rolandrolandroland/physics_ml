@@ -72,7 +72,14 @@ foundation of that larger goal. It contains:
     steady continuous-current COP envelope.
 42. A thermally averaged power-electronics layer using mean and mean-square
     current, with direct and smoothed PWM cases and separate wall-plug power.
-43. Unit, sign, energy, sampling, measurement, numerical, PINN, and
+43. A provenance-rich 300 K catalog of six p-type and six n-type same-row
+    StarryData material-property records.
+44. Material-to-module scaling for Seebeck coefficient, electrical resistance,
+    thermal conductance, active volume, and estimated footprint.
+45. A 24-design screen, cost-aware Bayesian optimization versus random search,
+    and fixed-current as-built robustness campaign for three applications.
+46. Unit, sign, energy, sampling, measurement, numerical, PINN, material,
+    optimization, robustness, and
     identifiability tests.
 
 The package does **not** yet represent a hardware-validated digital twin. Its
@@ -83,13 +90,15 @@ generated their synthetic reference data.
 
 ## 1. How to use this documentation
 
-There are five documentation layers:
+There are six documentation layers:
 
 - [`README.md`](README.md) is the concise package reference.
 - `README_detailed.md`, this file, is the step-by-step technical walkthrough.
 - [`PINN_SHOWCASE.md`](PINN_SHOWCASE.md) is the focused reproducible case study.
 - [`ROADMAP.md`](ROADMAP.md) defines the complete project sequence and current
   milestone exit criteria.
+- [`MATERIAL_GEOMETRY_BAYESIAN_CODESIGN.md`](MATERIAL_GEOMETRY_BAYESIAN_CODESIGN.md)
+  is the material/geometry/product optimization experiment walkthrough.
 - [`notes/00_index.md`](notes/00_index.md) links to learning exercises,
   user-authored explanations, predictions, corrections, and derivations.
 
@@ -207,6 +216,12 @@ Generate the direct-versus-smoothed averaged PWM and wall-power report:
 
 ~~~bash
 python3 -m thermotwin.pwm_power_electronics_report
+~~~
+
+Run the public-data-seeded material/geometry Bayesian co-design campaign:
+
+~~~bash
+python3 -m thermotwin.material_geometry_codesign_report
 ~~~
 
 Audit virtual dataset provenance, completeness, ranges, and whole-regime
@@ -3877,6 +3892,103 @@ The three corresponding physics-and-code exercise sheets are
 [`notes/20_pulse_operating_envelope.md`](notes/20_pulse_operating_envelope.md),
 and [`notes/21_pwm_power_electronics.md`](notes/21_pwm_power_electronics.md).
 
+### 14.4 Public-data-seeded material and product co-design
+
+The first product co-design campaign replaces the single generic module
+parameter set with a small, auditable material/geometry design space. Twelve
+300 K records come from the fixed 2019 StarryData thermoelectric snapshot on
+Figshare, DOI `10.6084/m9.figshare.11340935.v1`. Each retained Seebeck
+coefficient, electrical conductivity, and thermal conductivity triplet comes
+from one sample row. ThermoTwin never creates a fictitious material by mixing
+the best value from different samples.
+
+For an equal-area p/n couple repeated $N$ times, the material-to-module mapping
+is
+
+$$
+\alpha=N(S_p-S_n),
+$$
+
+$$
+R=1.05N\frac{L}{A}
+\left(\frac{1}{\sigma_p}+\frac{1}{\sigma_n}\right),
+$$
+
+and
+
+$$
+K=N\frac{A}{L}(k_p+k_n)+0.04\ \mathrm{W/K}.
+$$
+
+The 5% electrical multiplier and 0.04 W/K package leak are explicit assembly
+assumptions. Geometry spans 80--160 couples, 0.8--2.4 mm leg length, and
+0.8--2.4 mm2 leg area. Symmetric contact resistance, cold exchanger
+conductance, and hot exchanger conductance are also design variables. The
+existing four-node steady balances and smoothed-PWM current moments then
+calculate delivered cooling, terminal power, wall power, COP, heat flux,
+current density, and peak voltage.
+
+Because the public snapshot does not contain manufacturing prices, the
+campaign uses a stated relative build-burden index based on active volume,
+couple count, and exchanger conductance. It is not dollars, manufacturing
+yield, or levelized product cost.
+
+#### 14.4.1 Experiment sequence
+
+The frozen campaign uses seed `20260821` and performs:
+
+1. an eight-dimensional, 24-design Latin-hypercube screen;
+2. 12 cost-aware expected-improvement selections from 180 candidates for each
+   of three application specifications;
+3. 25 equal-budget random candidate orders for each application; and
+4. 300 fixed-current uncertainty trials for each selected nominal design.
+
+The applications represent 10 K efficiency-first, 25 K balanced, and 10 K
+capacity-first operation. They impose separate cooling, wall-COP, supply-power,
+current-density, and voltage requirements and use different scalar utilities.
+The Gaussian process uses normalized geometry/interface features plus one-hot
+p- and n-material features. Expected improvement is divided by square root of
+the relative prototype cost index.
+
+#### 14.4.2 Results
+
+The initial screen yields 17/24 feasible designs for 10 K efficiency and 16/24
+for each other specification. It already contains the retrospective tested-pool
+winner for both 10 K objectives, so their BO and random best-so-far curves stay
+flat. This is an honest saturation result, not an omitted optimization run.
+
+For the 25 K balanced specification, BO reaches the tested pool optimum after
+six additional prototypes. Utility increases from 3.6993 to 6.2354, about
+68.6%, while the 25-run random-search median remains 3.6993 after the same
+budget. The selected design uses StarryData samples 10561 and 10562, 98
+couples, 1.179 mm length, 2.216 mm2 area, and 2.111 A mean current. It delivers
+8.253 W at wall COP 0.863 with cost index 1.142 in the virtual model.
+
+The selected 10 K hardware uses samples 9107 and 10562, 83 couples, 1.079 mm
+length, and 0.845 mm2 area. Efficiency-first operation uses 0.494 A and
+delivers 2.520 W at wall COP 2.820. Capacity-first operation uses the same
+hardware at 0.805 A and delivers 4.650 W at wall COP 2.175. This demonstrates
+that product geometry and controller setpoint must be selected together.
+
+The fixed-current uncertainty study is the most important commercialization
+warning. The high-lift and capacity selections pass 100.0% and 99.7% of the
+300 frozen trials, respectively. The nominal efficiency winner passes only
+58.3% because it sits just 0.020 W above its 2.5 W cooling requirement. A
+future robust or chance-constrained optimizer should include requirement pass
+probability during selection rather than checking it only afterward.
+
+The complete provenance, equations, ranges, objective definitions, numerical
+results, and limitations are in
+[`MATERIAL_GEOMETRY_BAYESIAN_CODESIGN.md`](MATERIAL_GEOMETRY_BAYESIAN_CODESIGN.md).
+Exercises that connect every scientific claim to code and tests are in
+[`notes/22_material_geometry_bayesian_codesign.md`](notes/22_material_geometry_bayesian_codesign.md).
+
+This work does not infer processing recipes, model complex lattices, supply
+dollar costs, or validate hardware. Temperature-dependent material curves,
+paired process/property/cost data, spatial heat spreading, calibrated
+converter maps, and real assembly measurements remain necessary for product
+optimization.
+
 ---
 
 ## 15. Current package structure
@@ -3898,6 +4010,9 @@ thermotwin/
 ├── pulse_operating_map_report.py
 ├── pwm_power_electronics.py
 ├── pwm_power_electronics_report.py
+├── material_catalog.py
+├── material_geometry_codesign.py
+├── material_geometry_codesign_report.py
 ├── sparse_sensor_inference.py
 ├── experiment_selection.py
 ├── assembly_fingerprint.py
@@ -3940,6 +4055,7 @@ thermotwin/
 ├── COP_OPERATING_MAP_EXPERIMENT.md
 ├── PULSE_OPERATING_MAP_EXPERIMENT.md
 ├── PWM_POWER_ELECTRONICS_EXPERIMENT.md
+├── MATERIAL_GEOMETRY_BAYESIAN_CODESIGN.md
 ├── NEXT_EXPERIMENT_WALKTHROUGH.md
 ├── ASSEMBLY_FINGERPRINT_EXPERIMENT.md
 ├── HARDWARE_VALIDATION_PROTOCOL.md
@@ -3963,6 +4079,9 @@ tests/
 ├── test_pulse_operating_map_report.py
 ├── test_pwm_power_electronics.py
 ├── test_pwm_power_electronics_report.py
+├── test_material_catalog.py
+├── test_material_geometry_codesign.py
+├── test_material_geometry_codesign_report.py
 ├── test_sparse_sensor_inference.py
 ├── test_experiment_selection.py
 ├── test_assembly_fingerprint.py
@@ -4040,13 +4159,16 @@ The planned learning and implementation sequence is:
     standardized synthetic assembly fingerprint.
 16. Preserve the steady cooling/heating operating map, equal-load contact
     comparison, pulse-envelope overlay, and averaged PWM current-moment tests.
-17. Calibrate a converter loss/ripple model only after its electrical topology
+17. Preserve the same-row material catalog, module-scaling limiting cases,
+    24-design screen, equal-budget BO/random comparison, and as-built
+    robustness audit.
+18. Calibrate a converter loss/ripple model only after its electrical topology
     or measured efficiency map is defined.
-18. Extend the local experiment-selection validation to complete nonlinear
+19. Extend the local experiment-selection validation to complete nonlinear
     repeated fits and additional uncertain physical parameters.
-19. Compare physics-informed and observation-only learning on identical
+20. Compare physics-informed and observation-only learning on identical
     imperfect accessible-sensor datasets.
-20. Validate against hardware only after the documented measurement
+21. Validate against hardware only after the documented measurement
     definitions, safety limits, sensor locations, and fluid interfaces are
     agreed.
 

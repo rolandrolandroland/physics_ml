@@ -490,6 +490,80 @@ heat-transfer parameter.
 
 ---
 
+## Milestone 6C — Application-specific material and product co-design
+
+**Status: Complete for the current public-data-seeded virtual method. Process,
+cost, and hardware calibration remain future work.**
+
+### Goal
+
+Connect material properties, module geometry, thermal interfaces, heat
+rejection, electrical drive, relative prototype burden, and application
+requirements in one reproducible design-selection loop.
+
+### Required work
+
+- Preserve same-sample material-property relationships and fixed source-data
+  provenance.
+- Convert p/n Seebeck coefficient, electrical conductivity, thermal
+  conductivity, couple count, leg length, and leg area into module $\alpha$,
+  $R$, and $K$.
+- Include explicit contact resistance, exchanger conductance, current moments,
+  converter loss, wall COP, current-density limits, and voltage limits.
+- Define application-specific feasibility constraints and scalar objectives.
+- Screen 20--30 initial space-filling designs.
+- Compare Bayesian optimization with an equal-budget random baseline.
+- Retain saturated or negative optimization results.
+- Stress-test selected nominal designs against stated material/interface
+  uncertainty without presenting assumed spread as measured manufacturing
+  capability.
+- Document every public-data, physics, and synthetic-assumption boundary.
+
+### Implemented result
+
+- Twelve 300 K same-row Bi/Te-family records are retained from fixed
+  StarryData snapshot DOI `10.6084/m9.figshare.11340935.v1` with its checksum.
+- Eight design coordinates cover p material, n material, couple count, leg
+  length, leg area, contact resistance, and cold/hot exchanger conductance.
+- A 24-design Latin-hypercube screen is followed by 12 cost-aware
+  expected-improvement selections from 180 candidates for each of three
+  application specifications.
+- Twenty-five equal-budget random candidate orders provide a repeated
+  comparison rather than a favorable single seed.
+- The 25 K balanced case improves application utility from 3.6993 to 6.2354
+  and reaches the tested pool optimum after six BO additions; the random median
+  remains at 3.6993.
+- Both 10 K initial screens already contain the tested pool winner, so no false
+  improvement is claimed.
+- Three 300-trial fixed-current robustness studies show 58.3%, 100.0%, and
+  99.7% requirement pass rates. The fragile efficiency winner demonstrates why
+  nominal COP optimization is not sufficient for commercialization.
+- Walkthrough: `MATERIAL_GEOMETRY_BAYESIAN_CODESIGN.md`.
+- Exercises: `notes/22_material_geometry_bayesian_codesign.md`.
+
+### Exit criteria
+
+- Public material rows, synthetic assumptions, and hardware evidence are
+  labeled separately.
+- Geometry limiting cases and whole-system steady energy balances are tested.
+- Candidate generation, GP acquisition, random comparison, and robustness are
+  deterministic under recorded seeds.
+- Optimization budgets and candidate pools are equal in the BO/random
+  comparison.
+- Selected designs are reported with requirements, current, COP, cooling,
+  cost index, uncertainty, and limitations.
+
+### Next scientific extension
+
+The next co-design claim should be robust or chance-constrained selection using
+measured process-capability distributions. Process variables, complex lattice
+descriptors, actual material prices, and manufacturing cycle time should enter
+only after paired process/property/cost data exist. Temperature-dependent
+material curves and hardware-calibrated exchanger/converter models are also
+needed before product recommendations.
+
+---
+
 ## Milestone 7 — Interview-ready research artifact
 
 **Status: Partial and developed continuously.**
@@ -575,12 +649,15 @@ Measure the synthetic-to-real gap with a safe benchtop Peltier experiment.
    coverage and an explicitly underdetermined multi-parameter case.
 4. Finish Milestone 6B with complete nonlinear refits of selected and naive
    experiments over repeated synthetic trials.
-5. Refine Milestone 6A only when new validated physics—such as flowing-fluid
+5. Extend Milestone 6C to chance-constrained optimization only after measured
+   process-capability or hardware uncertainty data replace the current virtual
+   spreads.
+6. Refine Milestone 6A only when new validated physics—such as flowing-fluid
    states, a calibrated converter loss map, or multi-assembly staging—changes
    the control question.
-6. Finalize Milestone 7 deliverables throughout, rather than postponing all
+7. Finalize Milestone 7 deliverables throughout, rather than postponing all
    documentation until the end.
-7. Attempt Milestone 8 only if safe hardware and sufficient time are available.
+8. Attempt Milestone 8 only if safe hardware and sufficient time are available.
 
 ## Final project claim
 

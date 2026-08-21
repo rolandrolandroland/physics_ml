@@ -116,6 +116,42 @@ The corresponding physics-and-code exercise sheets are
 and
 [`notes/21_pwm_power_electronics.md`](notes/21_pwm_power_electronics.md).
 
+## Public-data-seeded product co-design
+
+ThermoTwin now connects 12 same-row, 300 K Bi/Te-family material records from
+the fixed StarryData snapshot to module geometry, explicit contacts, exchanger
+sizing, smoothed PWM current, wall-plug COP, and a transparent relative
+prototype-cost index. It runs three linked CPU-first experiments:
+
+1. a reproducible 24-design Latin-hypercube screen;
+2. cost-aware Gaussian-process Bayesian optimization versus 25 equal-budget
+   random-search baselines for three application specifications; and
+3. 300-trial fixed-current robustness checks for material, contact, exchanger,
+   and converter variation.
+
+Run the complete campaign and nine-panel report with:
+
+~~~bash
+python3 -m thermotwin.material_geometry_codesign_report
+~~~
+
+For the 25 K balanced application, Bayesian optimization reaches the tested
+candidate-pool optimum after six additional virtual prototypes, increasing
+application utility from 3.6993 to 6.2354 while the random-search median stays
+at 3.6993. The initial 24 designs already contain the pool winner for both
+10 K objectives. The nominal 10 K efficiency winner passes only 58.3% of the
+frozen as-built trials because its 2.520 W cooling rate barely clears the
+2.5 W requirement; this deliberately retained result shows why nominal
+efficiency is not enough for a commercial design.
+
+The public-data provenance, module equations, assumptions, experiment designs,
+full results, and limitations are in
+[`MATERIAL_GEOMETRY_BAYESIAN_CODESIGN.md`](MATERIAL_GEOMETRY_BAYESIAN_CODESIGN.md).
+The physics-and-code worksheet is
+[`notes/22_material_geometry_bayesian_codesign.md`](notes/22_material_geometry_bayesian_codesign.md).
+The cost index and uncertainty widths are explicit synthetic assumptions, not
+dollar costs or measured manufacturing capability.
+
 [`HARDWARE_VALIDATION_PROTOCOL.md`](HARDWARE_VALIDATION_PROTOCOL.md) defines
 the measurement CSV and safety decisions needed for a future physical test.
 No hardware result is claimed or synthesized.
