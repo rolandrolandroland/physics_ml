@@ -36,7 +36,7 @@ class PulseMapComparison(NamedTuple):
 
 
 class PulseOperatingMapResult(NamedTuple):
-    """Steady baseline curve and optimized transient pulse markers."""
+    """Steady baseline curve, tested pulse markers, and full duty candidates."""
 
     steady_curve: Tuple[SteadyOperatingPoint, ...]
     comparisons: Tuple[PulseMapComparison, ...]

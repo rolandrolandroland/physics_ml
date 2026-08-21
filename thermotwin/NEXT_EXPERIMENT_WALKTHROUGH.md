@@ -60,7 +60,7 @@ The selected pulse is:
 0.8 A for 20 s, beginning at 5 s
 ```
 
-Its modeled electrical energy is 27.66 J and its expected information gain is
+Its modeled electrical energy is 27.54 J and its expected information gain is
 7.198 nats. Its local log-parameter standard errors are:
 
 | Parameter | Log-space standard error |
@@ -74,6 +74,10 @@ The deliberately naive comparison is the smallest feasible pulse, 0.4 A for
 
 The highest-energy pulses are not selected automatically: candidates that
 exceed the 30 J budget are displayed but rejected before ranking.
+
+Electrical energy is integrated per constant-current segment. The pulse on
+and off times are explicit boundaries, so the discontinuous $VI$ values are
+not joined by a fictitious output-grid-dependent trapezoidal ramp.
 
 ## Repeated-noise validation
 

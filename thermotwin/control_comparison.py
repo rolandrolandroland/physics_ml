@@ -15,7 +15,8 @@ from .contact_experiments import (
     constant_current_contact_reference_experiment,
     run_four_node_contact_experiment,
 )
-from .controls import PiecewiseConstantCurrent
+from .controls import CurrentInput, PiecewiseConstantCurrent, current_at
+from .thermoelectric import ThermoelectricParameters, electrical_power
 
 
 @dataclass(frozen=True)
@@ -27,12 +28,20 @@ class ControlComparisonConfig:
     time_step: float = 0.2
     target_cooling_rates: Tuple[float, ...] = (2.0, 5.0, 8.0)
     pulse_periods: Tuple[float, ...] = (10.0, 20.0, 30.0, 60.0)
-    pulse_duty_cycles: Tuple[float, ...] = (0.25, 0.50, 0.75)
+    pulse_duty_cycles: Tuple[float, ...] = (
+        0.25,
+        0.50,
+        0.75,
+        0.90,
+        0.95,
+        0.99,
+    )
     maximum_current: float = 1.5
     minimum_cold_face_temperature: float = 285.0
     maximum_hot_face_temperature: float = 315.0
     cooling_match_tolerance: float = 0.01
     amplitude_tolerance: float = 1e-4
+    amplitude_bracket_subdivisions: int = 24
     maximum_storage_drift: float = 0.05
 
     def __post_init__(self) -> None:
@@ -61,6 +70,12 @@ class ControlComparisonConfig:
             for value in self.pulse_duty_cycles
         ):
             raise ValueError("pulse duty cycles must lie between zero and one")
+        if (
+            isinstance(self.amplitude_bracket_subdivisions, bool)
+            or not isinstance(self.amplitude_bracket_subdivisions, int)
+            or self.amplitude_bracket_subdivisions < 2
+        ):
+            raise ValueError("amplitude bracket subdivisions must be at least two")
         if (
             not math.isfinite(self.minimum_cold_face_temperature)
             or not math.isfinite(self.maximum_hot_face_temperature)
@@ -140,7 +155,11 @@ def trapezoidal_integral(
     start_time: float,
     end_time: float,
 ) -> float:
-    """Integrate a sampled history over an exactly clipped interval."""
+    """Integrate a continuous sampled history over an exactly clipped interval.
+
+    Do not use this helper on one-sided samples of a discontinuous signal such
+    as switched electrical power; use :func:`piecewise_electrical_energy`.
+    """
 
     if len(time) != len(values) or len(time) < 2:
         raise ValueError("time and values must have equal length of at least two")
@@ -198,6 +217,152 @@ def _value_at(
     raise ValueError("target time lies outside sampled time")
 
 
+def piecewise_electrical_energy(
+    time: Sequence[float],
+    cold_face_temperature: Sequence[float],
+    hot_face_temperature: Sequence[float],
+    thermoelectric_parameters: ThermoelectricParameters,
+    current: CurrentInput,
+    *,
+    start_time: float,
+    end_time: float,
+) -> float:
+    """Integrate electrical power without smoothing current discontinuities.
+
+    Temperature is interpolated continuously, but each integration subinterval
+    is assigned one constant current selected at its midpoint. Transition times
+    are inserted as breakpoints even when they are absent from the sampled
+    output grid. Both endpoint powers are then evaluated with that interval's
+    current, preserving the correct left and right limits at a switch.
+    """
+
+    if (
+        len(time) != len(cold_face_temperature)
+        or len(time) != len(hot_face_temperature)
+        or len(time) < 2
+    ):
+        raise ValueError("power histories must have equal length of at least two")
+    if any(right <= left for left, right in zip(time, time[1:])):
+        raise ValueError("power-history time must be strictly increasing")
+    if end_time <= start_time:
+        raise ValueError("integration end time must exceed start time")
+    if start_time < time[0] or end_time > time[-1]:
+        raise ValueError("integration interval lies outside sampled time")
+
+    breakpoints = {start_time, end_time}
+    breakpoints.update(
+        sample_time
+        for sample_time in time
+        if start_time < sample_time < end_time
+    )
+    if isinstance(current, PiecewiseConstantCurrent):
+        breakpoints.update(
+            transition
+            for transition in current.transition_times
+            if start_time < transition < end_time
+        )
+    ordered = tuple(sorted(breakpoints))
+
+    # Breakpoints are ordered, so advance through the sampled trajectory once.
+    # Calling the general-purpose _value_at search for every endpoint would be
+    # quadratic in the number of output samples for long control campaigns.
+    sample_index = 0
+
+    def temperatures_at(target_time: float) -> Tuple[float, float]:
+        nonlocal sample_index
+        while (
+            sample_index < len(time) - 2
+            and time[sample_index + 1] < target_time
+        ):
+            sample_index += 1
+        left_time = time[sample_index]
+        right_time = time[sample_index + 1]
+        if not left_time <= target_time <= right_time:
+            raise ValueError("power breakpoint lies outside sampled time")
+        return (
+            _linear_interpolation(
+                left_time,
+                right_time,
+                cold_face_temperature[sample_index],
+                cold_face_temperature[sample_index + 1],
+                target_time,
+            ),
+            _linear_interpolation(
+                left_time,
+                right_time,
+                hot_face_temperature[sample_index],
+                hot_face_temperature[sample_index + 1],
+                target_time,
+            ),
+        )
+
+    energy = 0.0
+    left_cold, left_hot = temperatures_at(ordered[0])
+    for left_time, right_time in zip(ordered, ordered[1:]):
+        interval_current = current_at(current, 0.5 * (left_time + right_time))
+        right_cold, right_hot = temperatures_at(right_time)
+        left_power = electrical_power(
+            thermoelectric_parameters,
+            interval_current,
+            left_hot,
+            left_cold,
+        )
+        right_power = electrical_power(
+            thermoelectric_parameters,
+            interval_current,
+            right_hot,
+            right_cold,
+        )
+        energy += 0.5 * (left_power + right_power) * (
+            right_time - left_time
+        )
+        left_cold, left_hot = right_cold, right_hot
+    return energy
+
+
+def first_rising_crossing_bracket(
+    response: Callable[[float], float],
+    *,
+    target: float,
+    maximum_input: float,
+    subdivisions: int,
+) -> Optional[Tuple[float, float]]:
+    """Bracket the first sampled below-to-above target crossing.
+
+    Unlike an endpoint-only feasibility check, this can find a feasible rising
+    branch even when the response later turns over and falls below the target
+    at ``maximum_input``.
+    """
+
+    if not math.isfinite(target) or not math.isfinite(maximum_input):
+        raise ValueError("bracketing target and maximum input must be finite")
+    if maximum_input <= 0.0:
+        raise ValueError("bracketing maximum input must be positive")
+    if (
+        isinstance(subdivisions, bool)
+        or not isinstance(subdivisions, int)
+        or subdivisions < 2
+    ):
+        raise ValueError("bracketing subdivisions must be an integer at least two")
+
+    previous_input = 0.0
+    previous_response = response(previous_input)
+    if not math.isfinite(previous_response):
+        raise ValueError("bracketing response must be finite")
+    if previous_response >= target:
+        return (0.0, 0.0)
+    for index in range(1, subdivisions + 1):
+        candidate_input = maximum_input * index / subdivisions
+        candidate_response = response(candidate_input)
+        if not math.isfinite(candidate_response):
+            raise ValueError("bracketing response must be finite")
+        if previous_response < target <= candidate_response:
+            return previous_input, candidate_input
+        previous_input = candidate_input
+        previous_response = candidate_response
+    return None
+
+
 def evaluate_control_schedule(
     experiment: FourNodeContactExperiment,
     *,
@@ -211,7 +376,6 @@ def evaluate_control_schedule(
 
     result = run_four_node_contact_experiment(experiment)
     trajectory = result.trajectory
-    diagnostics = result.diagnostics
     start_time = config.warmup_duration
     end_time = config.total_duration
     duration = config.evaluation_duration
@@ -228,9 +392,12 @@ def evaluate_control_schedule(
         start_time=start_time,
         end_time=end_time,
     ) / duration
-    average_power = trapezoidal_integral(
+    average_power = piecewise_electrical_energy(
         trajectory.time,
-        diagnostics.electrical_power,
+        trajectory.cold_face,
+        trajectory.hot_face,
+        experiment.thermoelectric_parameters,
+        experiment.current,
         start_time=start_time,
         end_time=end_time,
     ) / duration
@@ -304,32 +471,45 @@ def _match_target(
     point_builder: Callable[[FourNodeContactExperiment, float], ControlOperatingPoint],
     config: ControlComparisonConfig,
 ) -> Optional[ControlOperatingPoint]:
-    lower = 0.0
-    upper = config.maximum_current
-    upper_experiment = _experiment_for_schedule(
-        base, schedule_builder(upper), config
-    )
-    upper_point = point_builder(upper_experiment, upper)
-    if upper_point.average_cooling_rate < target:
-        return None
+    evaluated = {}
 
-    best = upper_point
+    def evaluate(amplitude: float) -> ControlOperatingPoint:
+        if amplitude not in evaluated:
+            experiment = _experiment_for_schedule(
+                base, schedule_builder(amplitude), config
+            )
+            evaluated[amplitude] = point_builder(experiment, amplitude)
+        return evaluated[amplitude]
+
+    # Preserve the inexpensive monotone-path bisection used in the validated
+    # current envelope. If the endpoint falls below target, scan the interior
+    # before declaring infeasibility because cooling can turn over at high I.
+    maximum_point = evaluate(config.maximum_current)
+    if maximum_point.average_cooling_rate >= target:
+        bracket = (0.0, config.maximum_current)
+    else:
+        bracket = first_rising_crossing_bracket(
+            lambda amplitude: evaluate(amplitude).average_cooling_rate,
+            target=target,
+            maximum_input=config.maximum_current,
+            subdivisions=config.amplitude_bracket_subdivisions,
+        )
+    if bracket is None:
+        return None
+    lower, upper = bracket
+    if lower == upper:
+        return evaluate(upper)
+    best = evaluate(upper)
     while upper - lower > config.amplitude_tolerance:
         candidate = 0.5 * (lower + upper)
-        experiment = _experiment_for_schedule(
-            base, schedule_builder(candidate), config
-        )
-        point = point_builder(experiment, candidate)
+        point = evaluate(candidate)
         best = point
         if point.average_cooling_rate < target:
             lower = candidate
         else:
             upper = candidate
     if abs(best.average_cooling_rate - target) > config.cooling_match_tolerance:
-        experiment = _experiment_for_schedule(
-            base, schedule_builder(upper), config
-        )
-        best = point_builder(experiment, upper)
+        best = evaluate(upper)
     return best
 
 
@@ -557,7 +737,7 @@ def format_control_comparison_report(result: ControlComparisonResult) -> str:
                     f"COP={continuous.delivered_cooling_cop:.4f}"
                 ),
                 (
-                    f"  best pulse I={pulsed.current_amplitude:.4f} A, "
+                    f"  highest-COP tested pulse I={pulsed.current_amplitude:.4f} A, "
                     f"period={pulsed.period:.1f} s, "
                     f"duty={pulsed.duty_cycle:.2f}, "
                     f"COP={pulsed.delivered_cooling_cop:.4f}"
@@ -574,6 +754,35 @@ def format_control_comparison_report(result: ControlComparisonResult) -> str:
                 ),
             )
         )
+        lines.append("  duty sweep (highest COP across tested periods):")
+        feasible_duties = sorted(
+            {
+                point.duty_cycle
+                for point in comparison.pulsed_candidates
+                if point.duty_cycle is not None
+            }
+        )
+        for duty_cycle in feasible_duties:
+            duty_points = tuple(
+                point
+                for point in comparison.pulsed_candidates
+                if point.duty_cycle == duty_cycle
+            )
+            duty_best = max(
+                duty_points,
+                key=lambda point: point.delivered_cooling_cop,
+            )
+            duty_change = 100.0 * (
+                duty_best.delivered_cooling_cop
+                / continuous.delivered_cooling_cop
+                - 1.0
+            )
+            lines.append(
+                f"    duty={duty_cycle:.2f}: "
+                f"COP={duty_best.delivered_cooling_cop:.4f}, "
+                f"change={duty_change:+.2f}%, "
+                f"period={duty_best.period:.1f} s"
+            )
     lines.append("fixed-schedule cold-contact-resistance stress test:")
     for case in result.uncertainty_cases:
         lines.append(

@@ -19,8 +19,11 @@ The thermal equations need two waveform statistics:
 - Joule heat uses mean-square current, $\overline{I^2}$.
 
 The implementation therefore averages the electrical waveform first and then
-solves the contact-aware steady thermal balances. It is a first
-power-electronics layer, not a switching-converter circuit simulation.
+solves the contact-aware steady thermal balances. Scalar DC, averaged PWM, and
+material/geometry co-design all delegate to one shared four-node steady kernel
+that accepts $(\overline I,\overline{I^2})$. The scalar limit supplies
+$(I,I^2)$, preventing duplicated matrices from drifting apart. This remains a
+first power-electronics layer, not a switching-converter circuit simulation.
 
 ## Current models
 
@@ -96,7 +99,23 @@ $$
 +R\overline{I^2}.
 $$
 
-The exact averaged energy check remains
+This is a time-scale-separation closure, not an exact identity for arbitrary
+thermal ripple. In general,
+
+$$
+\overline{I T_c}
+=\overline I\,\overline T_c+\mathrm{Cov}(I,T_c),
+$$
+
+with analogous covariance terms for $T_h$ and $T_h-T_c$. The current-moment
+model sets those covariance terms to zero. That approximation is appropriate
+when the electrical switching period is much shorter than the thermal time
+constants and face-temperature ripple within a switching cycle is negligible.
+If switching and thermal time scales become comparable, the full coupled
+waveform must be resolved or the covariance must be supplied by a faster
+electrothermal model.
+
+Within this zero-covariance moment closure, the energy check remains exact:
 
 $$
 \overline Q_h-\overline Q_c
@@ -206,6 +225,9 @@ Learning exercises:
 - There is no RMS-current device limit or component thermal model yet.
 - Electromagnetic interference and current/voltage sensor bandwidth are not
   modeled.
+- The closure neglects current-temperature covariance within an electrical
+  cycle; its validity requires negligible thermal ripple at the switching
+  frequency.
 - The comparison is synthetic and steady state.
 
 A later hardware-calibrated electrical model should derive ripple and loss

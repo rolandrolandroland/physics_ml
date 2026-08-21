@@ -60,6 +60,7 @@ class SparseSensorInferenceConfig:
     lag_bounds: Tuple[float, float] = (0.20, 4.0)
     grid_points_per_axis: int = 9
     refinement_count: int = 3
+    local_polish_iterations: int = 18
 
     def __post_init__(self) -> None:
         positive = (
@@ -96,8 +97,10 @@ class SparseSensorInferenceConfig:
             or self.grid_points_per_axis < 3
             or not isinstance(self.refinement_count, int)
             or self.refinement_count < 1
+            or not isinstance(self.local_polish_iterations, int)
+            or self.local_polish_iterations < 1
         ):
-            raise ValueError("search grid and refinement counts are invalid")
+            raise ValueError("search grid, refinement, and polish counts are invalid")
 
 
 class SparseSensorProblem(NamedTuple):
@@ -386,6 +389,30 @@ def fit_sparse_sensor_parameters(
     evaluations = []
     best: Optional[SparseSensorLossEvaluation] = None
 
+    def evaluate_parameters(
+        resistance: float,
+        lag: float,
+    ) -> SparseSensorLossEvaluation:
+        predicted, _ = simulate_accessible_observations(
+            problem.experiment.current,
+            cold_contact_resistance=resistance,
+            sensor_time_constant=lag,
+            sampling_interval=config.sampling_interval,
+            dense_time_step=config.dense_lag_time_step,
+        )
+        mse, cold_bias, hot_bias = _profiled_loss(
+            problem.observations, predicted
+        )
+        evaluation = SparseSensorLossEvaluation(
+            resistance,
+            lag,
+            cold_bias,
+            hot_bias,
+            mse,
+        )
+        evaluations.append(evaluation)
+        return evaluation
+
     for _ in range(config.refinement_count):
         resistance_step = (
             resistance_bounds[1] - resistance_bounds[0]
@@ -397,24 +424,7 @@ def fit_sparse_sensor_parameters(
             resistance = resistance_bounds[0] + resistance_index * resistance_step
             for lag_index in range(config.grid_points_per_axis):
                 lag = lag_bounds[0] + lag_index * lag_step
-                predicted, _ = simulate_accessible_observations(
-                    problem.experiment.current,
-                    cold_contact_resistance=resistance,
-                    sensor_time_constant=lag,
-                    sampling_interval=config.sampling_interval,
-                    dense_time_step=config.dense_lag_time_step,
-                )
-                mse, cold_bias, hot_bias = _profiled_loss(
-                    problem.observations, predicted
-                )
-                evaluation = SparseSensorLossEvaluation(
-                    resistance,
-                    lag,
-                    cold_bias,
-                    hot_bias,
-                    mse,
-                )
-                evaluations.append(evaluation)
+                evaluation = evaluate_parameters(resistance, lag)
                 if best is None or evaluation.mean_squared_error < best.mean_squared_error:
                     best = evaluation
         if best is None:
@@ -427,6 +437,54 @@ def fit_sparse_sensor_parameters(
             max(global_lag_bounds[0], best.sensor_time_constant - lag_step),
             min(global_lag_bounds[1], best.sensor_time_constant + lag_step),
         )
+
+    # The grid supplies a global, auditable starting point. A local pattern
+    # search then removes grid-node locking without using the hidden truth.
+    polish_resistance_step = resistance_step
+    polish_lag_step = lag_step
+    directions = tuple(
+        (resistance_direction, lag_direction)
+        for resistance_direction in (-1.0, 0.0, 1.0)
+        for lag_direction in (-1.0, 0.0, 1.0)
+        if resistance_direction != 0.0 or lag_direction != 0.0
+    )
+    for _ in range(config.local_polish_iterations):
+        candidates = []
+        coordinates = set()
+        for resistance_direction, lag_direction in directions:
+            resistance = min(
+                global_resistance_bounds[1],
+                max(
+                    global_resistance_bounds[0],
+                    best.cold_contact_resistance
+                    + resistance_direction * polish_resistance_step,
+                ),
+            )
+            lag = min(
+                global_lag_bounds[1],
+                max(
+                    global_lag_bounds[0],
+                    best.sensor_time_constant + lag_direction * polish_lag_step,
+                ),
+            )
+            coordinate = (resistance, lag)
+            if coordinate in coordinates or coordinate == (
+                best.cold_contact_resistance,
+                best.sensor_time_constant,
+            ):
+                continue
+            coordinates.add(coordinate)
+            candidates.append(evaluate_parameters(resistance, lag))
+        candidate_best = min(
+            candidates,
+            key=lambda item: item.mean_squared_error,
+            default=best,
+        )
+        if candidate_best.mean_squared_error < best.mean_squared_error:
+            best = candidate_best
+        else:
+            polish_resistance_step *= 0.5
+            polish_lag_step *= 0.5
 
     return SparseSensorFitResult(
         inferred_cold_contact_resistance=best.cold_contact_resistance,

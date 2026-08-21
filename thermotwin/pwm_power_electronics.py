@@ -3,7 +3,9 @@
 This module deliberately does not shrink the thermal integrator time step to
 the electrical switching period. It averages the current moments that the
 thermoelectric equations actually use: Peltier heat depends on mean current,
-while Joule heat depends on mean-square current.
+while Joule heat depends on mean-square current. It also assumes temperature
+ripple is negligible over a switching cycle, so current-temperature covariance
+in the Peltier terms is neglected.
 """
 
 from dataclasses import dataclass, replace
@@ -11,8 +13,10 @@ import math
 from typing import NamedTuple, Optional, Tuple
 
 from .contact_experiments import constant_current_contact_reference_experiment
-from .contact_transient import FourNodeContactSteadyState
-from .small_matrix import inverse_and_determinant
+from .contact_transient import (
+    FourNodeContactSteadyState,
+    four_node_contact_steady_state_from_current_moments,
+)
 
 
 @dataclass(frozen=True)
@@ -196,7 +200,12 @@ def averaged_thermoelectric_rates(
     hot_temperature: float,
     cold_temperature: float,
 ) -> AveragedThermoelectricRates:
-    """Evaluate averaged heat and power using first and second current moments."""
+    """Evaluate heat and power from current moments and mean temperatures.
+
+    This closes ``mean(I*T)`` as ``mean(I)*mean(T)``. The neglected term is
+    ``covariance(I, T)`` and is small only when thermal temperature ripple is
+    negligible over an electrical switching period.
+    """
 
     temperature_lift = hot_temperature - cold_temperature
     peltier_cold = seebeck_coefficient * current.mean_current * cold_temperature
@@ -237,51 +246,14 @@ def averaged_contact_steady_state(
         cold_contact_resistance=symmetric_contact_resistance,
         hot_contact_resistance=symmetric_contact_resistance,
     )
-    alpha_current = te.seebeck_coefficient * current.mean_current
-    half_joule = 0.5 * te.electrical_resistance * current.mean_square_current
-    module_conductance = te.thermal_conductance
-    cold_contact_conductance = 1.0 / thermal.cold_contact_resistance
-    hot_contact_conductance = 1.0 / thermal.hot_contact_resistance
-    cold_reservoir_conductance = thermal.cold_reservoir_conductance
-    hot_reservoir_conductance = thermal.hot_reservoir_conductance
-    matrix = (
-        (
-            alpha_current + module_conductance + cold_contact_conductance,
-            -module_conductance,
-            -cold_contact_conductance,
-            0.0,
-        ),
-        (
-            -module_conductance,
-            -alpha_current + module_conductance + hot_contact_conductance,
-            0.0,
-            -hot_contact_conductance,
-        ),
-        (
-            -cold_contact_conductance,
-            0.0,
-            cold_reservoir_conductance + cold_contact_conductance,
-            0.0,
-        ),
-        (
-            0.0,
-            -hot_contact_conductance,
-            0.0,
-            hot_reservoir_conductance + hot_contact_conductance,
-        ),
+    return four_node_contact_steady_state_from_current_moments(
+        te,
+        thermal,
+        mean_current=current.mean_current,
+        mean_square_current=current.mean_square_current,
+        cold_reservoir_temperature=cold_reservoir_temperature,
+        hot_reservoir_temperature=hot_reservoir_temperature,
     )
-    right_hand_side = (
-        half_joule,
-        half_joule,
-        cold_reservoir_conductance * cold_reservoir_temperature,
-        hot_reservoir_conductance * hot_reservoir_temperature,
-    )
-    inverse, _ = inverse_and_determinant(matrix)
-    temperatures = tuple(
-        sum(coefficient * value for coefficient, value in zip(row, right_hand_side))
-        for row in inverse
-    )
-    return FourNodeContactSteadyState(*temperatures)
 
 
 def evaluate_pwm_operating_point(

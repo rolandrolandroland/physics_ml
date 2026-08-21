@@ -33,8 +33,8 @@ decision-oriented synthetic experiments:
    cold and hot exchanger temperatures, including missing turn-off readings;
 2. reconstruct inaccessible face temperatures and transfer the inferred
    quantities to a withheld bipolar schedule;
-3. compare optimized continuous and pulsed operation at equal delivered
-   cooling after a periodic warm-up; and
+3. compare optimized continuous current with a bounded pulse sweep at equal
+   delivered cooling after a periodic warm-up; and
 4. select the next informative pulse under energy and temperature constraints,
    then use it as a standardized synthetic assembly fingerprint.
 
@@ -47,20 +47,23 @@ python3 -m thermotwin.engineering_showcase
 The default output is
 `thermotwin/figures/engineering_decision_showcase.png`. The main results are:
 
-- exchanger-only inference recovers the 0.25 K/W hidden contact and estimates
-  1.5 s sensor lag as 1.536 s, with every frozen truth inside its local 95%
-  interval;
-- the withheld current schedule has 0.00181 K accessible-sensor RMSE;
-- optimized pulses have 21.8--27.6% lower COP at matched 2--8 W cooling and
-  deliver 11.2--12.8% less cooling at matched power in the current lumped
-  model;
+- exchanger-only inference estimates a 0.25 K/W hidden contact as 0.25103 K/W
+  and a 1.5 s sensor lag as 1.5147 s, with every frozen truth inside its local
+  95% interval;
+- the withheld current schedule has 0.00186 K accessible-sensor RMSE and small
+  but nonzero hidden-face errors;
+- direct rectangular pulsing follows the expected duty law: its fixed-mean
+  Joule multiplier is $1/D$, and its COP penalty approaches zero as duty
+  approaches continuous operation;
 - the constrained planner selects 0.8 A for 20 s and reduces linearized joint
   log-parameter RMSE by 82.2% versus the smallest feasible pulse; and
 - a five-assembly synthetic batch is correctly separated into low-loss,
   reference-band, and elevated-loss contact groups.
 
-The negative pulsing result is retained intentionally. It says that this
-constant-property, fixed-reservoir model does not contain a mechanism that
+The negative pulsing result is retained intentionally. The older 21.8--27.6%
+headline came from a grid capped at 75% duty; it is now reported as one slice
+of the duty curve rather than an optimized result. Across duties through 99%,
+this constant-property, fixed-reservoir model does not contain a mechanism that
 overcomes the higher-current Joule penalty. It is not a claim about a different
 physical device.
 
@@ -78,7 +81,7 @@ efficiency operating envelope:
 
 1. a steady cooling/heating COP map over 0--1.5 A, 0--30 K external lift,
    three contact resistances, and the reduced no-explicit-contact topology;
-2. an overlay of the existing seconds-scale pulse winners on the steady
+2. an overlay of the highest-COP tested seconds-scale pulses on the steady
    continuous-current COP envelope; and
 3. a thermally averaged power-electronics layer that distinguishes ideal DC,
    smoothed PWM-derived current, and direct zero-to-peak current PWM.
@@ -95,14 +98,17 @@ The generic baseline shows that equal 0.25 K/W contacts reduce 3 W cooling COP
 by about 19--35% over 0--25 K external lift relative to the reduced topology;
 the target becomes infeasible at 30 K below the 1.5 A current bound. The
 seconds-scale continuous baselines agree with the exact steady map within
-0.04%, and their optimized pulse counterparts remain 21.8--27.6% below the
-continuous COP envelope.
+0.04%. The best 75%-duty points are about 22--28% below the continuous COP
+envelope, while the highest-COP tested 99%-duty points are only 0.86--1.04%
+below it because they approach the continuous limit.
 
 For electrical PWM, Peltier heat uses mean current while Joule heat uses
 mean-square current. At 0.6 A mean current, direct 1.5 A chopping has 2.5 times
 the DC Joule heat; the frozen 10% triangular-ripple smoothed case has only
 1.0008 times. Converter input power is reported separately from module
-terminal power so module COP and wall-plug COP are not confused.
+terminal power so module COP and wall-plug COP are not confused. The averaging
+also states its time-scale assumption explicitly: it neglects
+current-temperature covariance within one electrical switching cycle.
 
 The equations, settings, results, interpretation, and limits are documented in:
 

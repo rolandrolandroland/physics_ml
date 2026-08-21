@@ -44,10 +44,13 @@ from wall-plug power in the code.
 9. Subtract your heat equations and prove
    $\overline Q_h-\overline Q_c=\overline P_{\mathrm{module}}$.
 
-10. Identify the time-scale assumption required to pull face temperature out
-    of the electrical-cycle average.
+10. Starting from $\overline{IT}$, derive
+    $\overline{IT}=\overline I\,\overline T+\mathrm{Cov}(I,T)$. Identify the
+    time-scale assumption used when the code sets the covariance term to zero.
 
-11. Give an example in which that assumption could fail.
+11. Give an example in which that assumption could fail. What additional
+    electrothermal output would be needed besides the first two current
+    moments?
 
 ## Part C — Converter and COP boundaries
 
@@ -87,14 +90,18 @@ from wall-plug power in the code.
 
 ## Part E — Trace the thermal coupling
 
-23. Compare the matrix in `averaged_contact_steady_state` with
-    `four_node_contact_steady_state`. Identify the two coefficients that change
-    from scalar-current physics to current-moment physics.
+23. Trace `averaged_contact_steady_state` into
+    `four_node_contact_steady_state_from_current_moments`, then trace scalar
+    `four_node_contact_steady_state` into the same helper. Identify how the
+    helper represents Peltier and Joule terms and explain why sharing this
+    matrix prevents the DC, PWM, and co-design implementations from drifting.
 
 24. Why does $\alpha I$ use mean current while half-Joule heat uses
     mean-square current?
 
-25. Find the two steady heat-closure checks. What bug would each catch?
+25. Find the current-moment validation that enforces
+    $\overline{I^2}\geq\overline I^2$. Name the inequality behind it and give
+    an impossible moment pair that must be rejected.
 
 26. Explain why no switching frequency appears in the current implementation.
     Is that an omission, an averaging choice, or both?
@@ -149,36 +156,43 @@ python3 -m thermotwin.pwm_power_electronics_report
 39. Explain why the frozen regression “direct PWM is worse at 0.6 A and 10 K”
     is not a universal theorem about every controlled system.
 
-40. Design a test that verifies increasing converter efficiency increases
+40. Find the scalar-current limiting test for the shared moment solver. Why
+    must using $(\overline I,\overline{I^2})=(I,I^2)$ reproduce the original
+    four-node steady state?
+
+41. Design a test that verifies increasing converter efficiency increases
     wall COP without changing face temperatures or module COP.
 
 ## Part H — Next electrical model
 
-41. List the electrical parameters required to predict current ripple instead
+42. List the electrical parameters required to predict current ripple instead
     of prescribing it: include at least input voltage, switching frequency,
     inductance, load resistance, and control law.
 
-42. List losses absent from the constant efficiency model.
+43. List losses absent from the constant efficiency model.
 
-43. Propose an RMS-current or semiconductor-temperature constraint and explain
+44. Propose an RMS-current or semiconductor-temperature constraint and explain
     where it would enter an optimization.
 
-44. Design one measurement set that could calibrate converter efficiency as a
+45. Design one measurement set that could calibrate converter efficiency as a
     function of voltage, current, and duty.
 
-45. Explain how a detailed converter could still pass only $\overline I$ and
+46. Explain how a detailed converter could still pass only $\overline I$ and
     $\overline{I^2}$ to a slow thermal model.
+
+47. Under what condition are those two moments insufficient because
+    current-temperature covariance is no longer negligible?
 
 ## Part I — Own explanation and corrections
 
-46. Explain the difference between direct current PWM and smoothed PWM-derived
+48. Explain the difference between direct current PWM and smoothed PWM-derived
     current to someone who knows basic circuits but not thermoelectrics.
 
-47. Explain why “just use a shorter thermal time step” is not a complete
+49. Explain why “just use a shorter thermal time step” is not a complete
     power-electronics model.
 
-48. Record one prediction you revised after viewing the result.
+50. Record one prediction you revised after viewing the result.
 
-49. State three limitations before using these numbers in a product decision.
+51. State three limitations before using these numbers in a product decision.
 
-50. Status after review: `Not started`, `Draft`, `Revising`, or `Reviewed`.
+52. Status after review: `Not started`, `Draft`, `Revising`, or `Reviewed`.

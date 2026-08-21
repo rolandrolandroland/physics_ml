@@ -65,7 +65,12 @@ b_s = \frac{1}{N_s}\sum_i\left(y_{s,i}-T_{s,i}^{\mathrm{model}}\right).
 $$
 
 Profiling the biases this way leaves a two-dimensional coarse-to-fine search
-over resistance and lag. Missing readings simply do not enter the sum.
+over resistance and lag. A bounded local pattern-search polish starts from the
+best grid point and reduces its step sizes when none of the eight neighboring
+points improves the loss. This final step prevents a hidden truth that happens
+to lie on a grid node from producing an artificially exact-looking result.
+The polish uses only the observation loss; it never sees the hidden truth.
+Missing readings simply do not enter the sum.
 
 After fitting, finite-difference sensitivities form a local information
 matrix. Its inverse gives linearized standard errors, parameter correlations,
@@ -76,31 +81,33 @@ correct and the 0.02 K noise scale is known.
 
 | Quantity | Hidden truth | Estimate | Local 95% interval |
 | --- | ---: | ---: | ---: |
-| Cold contact resistance | 0.25000 K/W | 0.25000 K/W | 0.23861--0.26139 K/W |
-| Shared sensor lag | 1.5000 s | 1.5359 s | 1.35552--1.71636 s |
-| Cold-sensor bias | +0.0800 K | +0.0796 K | +0.07253--+0.08675 K |
-| Hot-sensor bias | -0.0400 K | -0.0420 K | -0.04645 to -0.03755 K |
+| Cold contact resistance | 0.25000 K/W | 0.25103 K/W | 0.23964--0.26241 K/W |
+| Shared sensor lag | 1.5000 s | 1.5147 s | 1.33492--1.69452 s |
+| Cold-sensor bias | +0.0800 K | +0.0792 K | +0.07208--+0.08630 K |
+| Hot-sensor bias | -0.0400 K | -0.0421 K | -0.04653 to -0.03763 K |
 
 All four synthetic truths fall inside their reported intervals. The training
 observation RMSE is 0.02151 K, close to the imposed 0.02 K noise scale.
 
-Resistance and lag have correlation -0.583. That is physically important:
+Resistance and lag have correlation -0.580. That is physically important:
 both a slower sensor and a different interface resistance can change the
 apparent transient response, so treating lag as known when it is not can bias
 the inferred contact.
 
-Because the resistance estimate lands on the hidden truth in this frozen
-seed, the reconstructed training face histories match the synthetic physical
-truth to floating-point precision. This is not a face-temperature
-measurement—the histories are consequences of the fitted physical model.
+The polished estimate is 0.41% above the hidden resistance instead of being
+locked exactly to its grid node. Consequently, the reconstructed training
+face histories have small but nonzero RMSE: 0.00156 K on the cold face and
+0.00017 K on the hot face. These are not face-temperature measurements—the
+histories are consequences of the fitted physical model.
 
 ## Withheld-current validation
 
 The fitted resistance, lag, and biases are transferred without refitting to a
 different schedule containing +0.75 A and -0.45 A intervals. Against noiseless
-synthetic truth, the two accessible sensor histories have 0.00181 K RMSE. The
-hidden face trajectories again agree to floating-point precision because the
-fitted resistance equals the frozen truth.
+synthetic truth, the two accessible sensor histories have 0.00186 K RMSE. The
+hidden cold- and hot-face trajectories have 0.00112 K and 0.00010 K RMSE,
+respectively. These nonzero errors are the honest consequence of estimating
+the parameters from noisy sparse data.
 
 This whole-regime transfer is stronger evidence than evaluating additional
 time points from the training schedule, but it remains a same-equation
@@ -126,3 +133,5 @@ limiting-case checks in
   hardware-calibrated confidence statement.
 - It uses the conventional solver for transparent CPU-first inference. The
   existing inverse PINNs remain separate ideal learned-model baselines.
+- The local polish reduces grid artifacts but does not turn the local
+  linearized interval into a globally valid uncertainty distribution.

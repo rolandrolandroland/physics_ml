@@ -22,6 +22,7 @@ from typing import NamedTuple, Optional, Sequence, Tuple
 from .contact_transient import (
     FourNodeContactSteadyState,
     FourNodeContactThermalParameters,
+    four_node_contact_steady_state_from_current_moments,
 )
 from .material_catalog import (
     MaterialSample,
@@ -402,57 +403,16 @@ def averaged_contact_steady_state_for_parameters(
     cold_reservoir_temperature: float,
     hot_reservoir_temperature: float,
 ) -> FourNodeContactSteadyState:
-    """Solve the four steady balances for arbitrary module/current moments."""
+    """Delegate arbitrary module/current moments to the shared steady kernel."""
 
-    alpha_current = thermoelectric_parameters.seebeck_coefficient * current.mean_current
-    half_joule = (
-        0.5
-        * thermoelectric_parameters.electrical_resistance
-        * current.mean_square_current
+    return four_node_contact_steady_state_from_current_moments(
+        thermoelectric_parameters,
+        thermal_parameters,
+        mean_current=current.mean_current,
+        mean_square_current=current.mean_square_current,
+        cold_reservoir_temperature=cold_reservoir_temperature,
+        hot_reservoir_temperature=hot_reservoir_temperature,
     )
-    module_conductance = thermoelectric_parameters.thermal_conductance
-    cold_contact_conductance = 1.0 / thermal_parameters.cold_contact_resistance
-    hot_contact_conductance = 1.0 / thermal_parameters.hot_contact_resistance
-    cold_reservoir_conductance = thermal_parameters.cold_reservoir_conductance
-    hot_reservoir_conductance = thermal_parameters.hot_reservoir_conductance
-    matrix = (
-        (
-            alpha_current + module_conductance + cold_contact_conductance,
-            -module_conductance,
-            -cold_contact_conductance,
-            0.0,
-        ),
-        (
-            -module_conductance,
-            -alpha_current + module_conductance + hot_contact_conductance,
-            0.0,
-            -hot_contact_conductance,
-        ),
-        (
-            -cold_contact_conductance,
-            0.0,
-            cold_reservoir_conductance + cold_contact_conductance,
-            0.0,
-        ),
-        (
-            0.0,
-            -hot_contact_conductance,
-            0.0,
-            hot_reservoir_conductance + hot_contact_conductance,
-        ),
-    )
-    source = (
-        half_joule,
-        half_joule,
-        cold_reservoir_conductance * cold_reservoir_temperature,
-        hot_reservoir_conductance * hot_reservoir_temperature,
-    )
-    inverse, _ = inverse_and_determinant(matrix)
-    temperatures = tuple(
-        sum(coefficient * value for coefficient, value in zip(row, source))
-        for row in inverse
-    )
-    return FourNodeContactSteadyState(*temperatures)
 
 
 def _application_utility(

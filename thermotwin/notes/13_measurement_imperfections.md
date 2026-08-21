@@ -894,6 +894,67 @@ inverse problem.
 
 ---
 
+## Block 11 — Sparse accessible-sensor inference and grid artifacts
+
+Read `thermotwin/sparse_sensor_inference.py`,
+`thermotwin/SPARSE_SENSOR_EXPERIMENT.md`, and
+`tests/test_sparse_sensor_inference.py`.
+
+### Exercise 49: Trace the observable and hidden quantities
+
+List the two measured temperatures, the two unobserved face temperatures, and
+the four fitted quantities. Explain why reconstruction of a hidden face is a
+model prediction rather than an additional measurement.
+
+### Exercise 50: Profile the two biases
+
+Derive the analytic least-squares bias used for each sensor. Why does this
+reduce the numerical search from four dimensions to two?
+
+### Exercise 51: Diagnose grid-node locking
+
+The resistance truth is 0.25 K/W. Explain how a coarse search whose nodes
+include exactly 0.25 can report an exact resistance and zero hidden-state error
+even when a nearby off-grid point has lower noisy-data loss. Why is this a
+numerical artifact rather than evidence of perfect identifiability?
+
+### Exercise 52: Trace the local polish
+
+Follow the eight-neighbor bounded pattern search. Explain when it moves the
+incumbent and when it halves its resistance and lag step sizes. Confirm that
+the code never supplies the hidden truth to the loss function.
+
+### Exercise 53: Interpret the corrected result
+
+Run:
+
+~~~bash
+python3 -m thermotwin.sparse_sensor_inference
+~~~
+
+Record the resistance, lag, biases, interval coverage, training observation
+RMSE, training hidden-face RMSE, and withheld-schedule RMSE. Explain why small
+nonzero hidden-state errors are more credible than exact zeros in this noisy
+same-model experiment.
+
+### Exercise 54: Review the off-grid test
+
+Find the test whose hidden resistance and lag are not grid nodes. State what
+failure it would expose that a truth-aligned regression cannot.
+
+### Exercise 55: Separate point accuracy from uncertainty
+
+The local polish improves the loss minimum. Explain why it does not by itself
+validate the local Gaussian interval, eliminate resistance-lag correlation,
+or prove performance on hardware.
+
+### Checkpoint 10
+
+Ask Codex to review Exercises 49–55 before interpreting exact or near-exact
+synthetic inverse results.
+
+---
+
 ## Interview teach-back
 
 ### 30-second explanation

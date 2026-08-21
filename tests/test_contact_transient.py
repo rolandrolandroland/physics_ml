@@ -8,6 +8,7 @@ from thermotwin import (
     electrical_power,
     four_node_contact_rhs,
     four_node_contact_steady_state,
+    four_node_contact_steady_state_from_current_moments,
     integrate_four_node_contact,
     integrate_two_node,
     thermal_contact_heat,
@@ -166,6 +167,48 @@ class ContactTransientTests(unittest.TestCase):
                 cold_reservoir_temperature=300.0,
                 hot_reservoir_temperature=300.0,
             )
+
+    def test_scalar_steady_state_is_exact_current_moment_limit(self):
+        scalar = four_node_contact_steady_state(
+            self.thermoelectric,
+            self.thermal,
+            current=0.8,
+            cold_reservoir_temperature=292.5,
+            hot_reservoir_temperature=307.5,
+            cold_external_heat=1.0,
+            hot_external_heat=-0.5,
+        )
+        moments = four_node_contact_steady_state_from_current_moments(
+            self.thermoelectric,
+            self.thermal,
+            mean_current=0.8,
+            mean_square_current=0.8**2,
+            cold_reservoir_temperature=292.5,
+            hot_reservoir_temperature=307.5,
+            cold_external_heat=1.0,
+            hot_external_heat=-0.5,
+        )
+
+        self.assertEqual(moments, scalar)
+
+    def test_steady_state_rejects_impossible_current_moments(self):
+        for mean_current, mean_square_current in (
+            (1.0, 0.9),
+            (0.0, -1e-15),
+        ):
+            with self.subTest(
+                mean_current=mean_current,
+                mean_square_current=mean_square_current,
+            ):
+                with self.assertRaises(ValueError):
+                    four_node_contact_steady_state_from_current_moments(
+                        self.thermoelectric,
+                        self.thermal,
+                        mean_current=mean_current,
+                        mean_square_current=mean_square_current,
+                        cold_reservoir_temperature=300.0,
+                        hot_reservoir_temperature=300.0,
+                    )
 
     def test_whole_system_energy_rate_includes_only_external_exchange(self):
         inputs = dict(

@@ -1,12 +1,11 @@
 """Select a feasible current pulse expected to reduce parameter uncertainty."""
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 import math
 import random
 from typing import NamedTuple, Sequence, Tuple
 
-from .control_comparison import trapezoidal_integral
-from .contact_diagnostics import evaluate_contact_trajectory
+from .control_comparison import piecewise_electrical_energy
 from .contact_experiments import constant_current_contact_reference_experiment
 from .controls import PiecewiseConstantCurrent
 from .small_matrix import (
@@ -230,22 +229,12 @@ def _candidate_energy_and_limits(
     )
     del dataset
     reference = constant_current_contact_reference_experiment()
-    thermal = replace(
-        reference.thermal_parameters,
-        cold_contact_resistance=config.nominal_cold_contact_resistance,
-        cold_face_thermal_capacitance=config.nominal_cold_face_capacitance,
-    )
-    diagnostics = evaluate_contact_trajectory(
-        reference.thermoelectric_parameters,
-        thermal,
-        trajectory,
-        current=current,
-        cold_reservoir_temperature=reference.cold_reservoir_temperature,
-        hot_reservoir_temperature=reference.hot_reservoir_temperature,
-    )
-    energy = trapezoidal_integral(
+    energy = piecewise_electrical_energy(
         trajectory.time,
-        diagnostics.electrical_power,
+        trajectory.cold_face,
+        trajectory.hot_face,
+        reference.thermoelectric_parameters,
+        current,
         start_time=trajectory.time[0],
         end_time=trajectory.time[-1],
     )

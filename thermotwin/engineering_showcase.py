@@ -110,7 +110,7 @@ def save_engineering_showcase(
         pulsed_cop,
         marker="s",
         linewidth=2.0,
-        label="Best feasible pulse",
+        label="Highest-COP tested pulse",
     )
     control_axis.set_title("Equal delivered-cooling comparison")
     control_axis.set_xlabel("Cold-reservoir cooling rate (W)")

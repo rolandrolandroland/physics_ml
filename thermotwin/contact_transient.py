@@ -206,25 +206,28 @@ def four_node_contact_rhs(
     )
 
 
-def four_node_contact_steady_state(
+def four_node_contact_steady_state_from_current_moments(
     thermoelectric_parameters: ThermoelectricParameters,
     thermal_parameters: FourNodeContactThermalParameters,
     *,
-    current: float,
+    mean_current: float,
+    mean_square_current: float,
     cold_reservoir_temperature: float,
     hot_reservoir_temperature: float,
     cold_external_heat: float = 0.0,
     hot_external_heat: float = 0.0,
 ) -> FourNodeContactSteadyState:
-    """Solve the four constant-input balances with all storage rates zero.
+    """Solve steady balances from the first two current moments.
 
-    With constant thermoelectric properties and fixed current, the four
-    balances form a linear system in the two face and two exchanger
-    temperatures. Thermal capacitances do not affect this equilibrium.
+    Peltier heat uses ``mean_current`` and Joule heat uses
+    ``mean_square_current``.  This is the shared algebraic kernel for scalar
+    DC, direct PWM, smoothed PWM, and material/geometry co-design.  Thermal
+    capacitances do not affect the equilibrium.
     """
 
     finite_inputs = (
-        current,
+        mean_current,
+        mean_square_current,
         cold_reservoir_temperature,
         hot_reservoir_temperature,
         cold_external_heat,
@@ -232,12 +235,21 @@ def four_node_contact_steady_state(
     )
     if any(not math.isfinite(value) for value in finite_inputs):
         raise ValueError("steady-state inputs must be finite")
+    if mean_square_current < 0.0:
+        raise ValueError("mean-square current must be nonnegative")
+    moment_tolerance = 1e-12 * max(1.0, mean_current**2)
+    if mean_square_current + moment_tolerance < mean_current**2:
+        raise ValueError(
+            "mean-square current cannot be smaller than mean current squared"
+        )
 
-    alpha_current = thermoelectric_parameters.seebeck_coefficient * current
+    alpha_current = (
+        thermoelectric_parameters.seebeck_coefficient * mean_current
+    )
     module_conductance = thermoelectric_parameters.thermal_conductance
     half_joule_heat = (
         0.5
-        * current**2
+        * mean_square_current
         * thermoelectric_parameters.electrical_resistance
     )
     cold_contact_conductance = 1.0 / thermal_parameters.cold_contact_resistance
@@ -289,6 +301,30 @@ def four_node_contact_steady_state(
         for row in inverse
     )
     return FourNodeContactSteadyState(*solution)
+
+
+def four_node_contact_steady_state(
+    thermoelectric_parameters: ThermoelectricParameters,
+    thermal_parameters: FourNodeContactThermalParameters,
+    *,
+    current: float,
+    cold_reservoir_temperature: float,
+    hot_reservoir_temperature: float,
+    cold_external_heat: float = 0.0,
+    hot_external_heat: float = 0.0,
+) -> FourNodeContactSteadyState:
+    """Solve the four constant-current balances with all rates zero."""
+
+    return four_node_contact_steady_state_from_current_moments(
+        thermoelectric_parameters,
+        thermal_parameters,
+        mean_current=current,
+        mean_square_current=current**2,
+        cold_reservoir_temperature=cold_reservoir_temperature,
+        hot_reservoir_temperature=hot_reservoir_temperature,
+        cold_external_heat=cold_external_heat,
+        hot_external_heat=hot_external_heat,
+    )
 
 
 def integrate_four_node_contact(

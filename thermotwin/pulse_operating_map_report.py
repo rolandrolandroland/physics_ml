@@ -61,7 +61,7 @@ def save_pulse_operating_map_report(
         color="tab:orange",
         marker="X",
         s=75,
-        label="optimized seconds-scale pulse",
+        label="highest-COP tested pulse",
     )
     axes[0, 0].set_title("Pulse points on the 0 K-lift COP envelope")
     axes[0, 0].set_xlabel("Delivered cooling (W)")
@@ -100,25 +100,44 @@ def save_pulse_operating_map_report(
     current_axis.legend(fontsize="small")
 
     penalty_axis = axes[1, 0]
-    penalty_axis.plot(
-        targets,
-        tuple(item.pulse_cop_change_percent for item in result.comparisons),
-        marker="o",
-        label="COP at equal cooling",
-    )
-    penalty_axis.plot(
-        targets,
-        tuple(
-            item.pulse_cooling_change_at_equal_power_percent
-            for item in result.comparisons
-        ),
-        marker="s",
-        label="cooling at equal power",
-    )
+    for comparison in result.control_result.comparisons:
+        best_by_duty = []
+        duty_cycles = sorted(
+            set(
+                point.duty_cycle
+                for point in comparison.pulsed_candidates
+                if point.duty_cycle is not None
+            )
+        )
+        for duty_cycle in duty_cycles:
+            duty_points = tuple(
+                point
+                for point in comparison.pulsed_candidates
+                if point.duty_cycle == duty_cycle
+            )
+            best = max(
+                duty_points,
+                key=lambda point: point.delivered_cooling_cop,
+            )
+            best_by_duty.append(best)
+        penalty_axis.plot(
+            duty_cycles,
+            tuple(
+                100.0
+                * (
+                    point.delivered_cooling_cop
+                    / comparison.continuous.delivered_cooling_cop
+                    - 1.0
+                )
+                for point in best_by_duty
+            ),
+            marker="o",
+            label=f"{comparison.target_cooling_rate:.0f} W target",
+        )
     penalty_axis.axhline(0.0, color="0.3", linewidth=0.8)
-    penalty_axis.set_title("Pulse change relative to continuous control")
-    penalty_axis.set_xlabel("Cooling target (W)")
-    penalty_axis.set_ylabel("Change (%)")
+    penalty_axis.set_title("Duty-dependent COP penalty")
+    penalty_axis.set_xlabel("Pulse duty cycle")
+    penalty_axis.set_ylabel("COP change from continuous (%)")
     penalty_axis.legend(fontsize="small")
 
     drift_axis = axes[1, 1]
@@ -142,7 +161,7 @@ def save_pulse_operating_map_report(
 
     figure.suptitle(
         "ThermoTwin seconds-scale pulse comparison\n"
-        "negative pulse result retained; no storage drift is counted as cooling",
+        "Joule penalty approaches zero as duty approaches continuous operation",
         fontsize=14,
     )
     figure.savefig(destination, dpi=150)

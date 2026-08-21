@@ -9,6 +9,7 @@ from .contact_transient import (
     FourNodeContactThermalParameters,
     four_node_contact_rhs,
     four_node_contact_steady_state,
+    four_node_contact_steady_state_from_current_moments,
     integrate_four_node_contact,
     thermal_contact_heat,
 )
@@ -244,6 +245,7 @@ __all__ = [
     "evaluate_contact_trajectory",
     "four_node_contact_rhs",
     "four_node_contact_steady_state",
+    "four_node_contact_steady_state_from_current_moments",
     "hot_side_heat",
     "heating_coefficient_of_performance",
     "integrate_four_node_contact",

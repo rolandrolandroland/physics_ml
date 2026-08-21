@@ -415,9 +415,14 @@ period.
 - Candidates warm for 360 s and are evaluated for 120 s with an explicit
   whole-system storage-drift check.
 - Continuous current and every feasible pulse are matched at 2, 5, and 8 W.
-- The best tested pulses have 21.8--27.6% lower COP than optimized continuous
-  current in the current model.
-- At equal electrical power, the same pulses deliver 11.2--12.8% less cooling.
+- The pulse sweep now spans duty through 0.99 and reports the best period at
+  every duty. The older 21.8--27.6% penalty is identified as the 0.75-duty
+  slice, not a grid-independent optimized result.
+- The grid-independent result is the expected direct-pulse law: at fixed mean
+  current, Joule heating is multiplied by $1/D$, and the COP penalty approaches
+  zero as duty approaches one. The highest-COP tested 0.99-duty points are
+  0.86--1.04% below continuous COP and deliver 0.38--0.44% less cooling at
+  equal electrical power.
 - The negative result remains stable across the inferred cold-contact
   resistance interval.
 - An exact 840-point steady map covers 0--30 K external lift, 0.05--1.50 A,
@@ -427,13 +432,16 @@ period.
   the feasible 0--25 K lift range; the target is infeasible at 30 K under the
   current bound.
 - The warmed continuous control points agree with the algebraic steady COP
-  envelope within 0.04%, and the optimized pulses remain below it.
+  envelope within 0.04%, and all tested pulses remain below it.
 - The first averaged power-electronics comparison distinguishes direct current
   chopping from smoothed PWM-derived current through $\overline I$ and
   $\overline{I^2}$, and reports module versus wall-plug COP separately.
 - At 0.6 A mean current, direct 1.5 A chopping produces 2.5 times the ideal-DC
   Joule heat, while the frozen 10% triangular-ripple smoothed case produces
   1.0008 times.
+- The PWM closure explicitly names its neglected
+  current-temperature-covariance term and its fast-electrical/slow-thermal
+  validity condition.
 - Walkthroughs are `CONTROL_COMPARISON_EXPERIMENT.md`,
   `COP_OPERATING_MAP_EXPERIMENT.md`, `PULSE_OPERATING_MAP_EXPERIMENT.md`, and
   `PWM_POWER_ELECTRONICS_EXPERIMENT.md`.

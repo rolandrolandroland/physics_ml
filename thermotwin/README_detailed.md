@@ -68,7 +68,7 @@ foundation of that larger goal. It contains:
     sweeps, independently checked against zero-rate balances and RK4.
 40. Cooling/heating COP maps over current, external temperature lift, contact
     resistance, and reduced versus explicit-contact topology.
-41. A connection between the optimized seconds-scale pulse study and the
+41. A connection between the bounded seconds-scale pulse study and the
     steady continuous-current COP envelope.
 42. A thermally averaged power-electronics layer using mean and mean-square
     current, with direct and smoothed PWM cases and separate wall-plug power.
@@ -206,7 +206,7 @@ Generate the steady cooling/heating COP operating map:
 python3 -m thermotwin.cop_operating_map_report
 ~~~
 
-Place the optimized seconds-scale pulse results on that steady map:
+Place the seconds-scale duty-sweep results on that steady map:
 
 ~~~bash
 python3 -m thermotwin.pulse_operating_map_report
@@ -3359,10 +3359,16 @@ The new operating tests check:
   optima;
 - equal-load contact penalties, extra face lift, and infeasible targets;
 - agreement of warmed continuous transients with the exact steady envelope;
+- segment-aware integration of discontinuous electrical power and invariance
+  to coarse or switch-misaligned output grids;
+- first-rising-crossing detection when cooling becomes nonmonotonic before the
+  configured maximum current;
 - rectangular-pulse mean and RMS current statistics;
-- the frozen negative pulse result under both equal-cooling and equal-power
-  comparisons;
+- the duty-dependent pulse penalty and its approach to zero as duty tends to
+  continuous operation under both equal-cooling and equal-power comparisons;
 - averaged thermoelectric energy closure using mean and mean-square current;
+- equivalence of the shared current-moment steady kernel to the scalar-current
+  limit and rejection of impossible current moments;
 - direct-PWM duty-one and smoothed-PWM zero-ripple limiting cases;
 - the separate effect of converter loss on wall COP; and
 - valid PNG generation in the ignored package figures directory.
@@ -3673,16 +3679,20 @@ The cold sensor loses seven records around the first turn-off.
 
 The estimator searches jointly over cold contact resistance and shared sensor
 lag. For each candidate pair, it profiles the two constant sensor biases using
-their analytic least-squares means. The frozen estimate is 0.25000 K/W for a
-0.25000 K/W truth and 1.5359 s for a 1.5000 s lag. Both biases are recovered
-within about 0.002 K, and the observation RMSE is 0.02151 K.
+their analytic least-squares means. A local pattern-search polish begins at
+the coarse-to-fine grid winner, preventing the hidden truth from looking
+exactly recovered merely because it is a grid node. The frozen estimate is
+0.25103 K/W for a 0.25000 K/W truth and 1.5147 s for a 1.5000 s lag. Both
+biases are recovered within about 0.003 K, and the observation RMSE is
+0.02151 K.
 
 Finite-difference sensitivities give a local covariance for resistance, lag,
-and both biases. The resistance-lag correlation is -0.583, which quantifies
+and both biases. The resistance-lag correlation is -0.580, which quantifies
 their transient confounding rather than assuming it away. All four hidden
 truths fall inside the local 95% intervals. Transferring the estimates to a
-withheld positive-and-negative current schedule gives 0.00181 K noiseless
-accessible-sensor RMSE.
+withheld positive-and-negative current schedule gives 0.00186 K noiseless
+accessible-sensor RMSE. The reconstructed cold and hot faces have small,
+nonzero withheld RMSE of 0.00112 K and 0.00010 K.
 
 The complete derivation, dataset definition, results, and limitations are in
 [`SPARSE_SENSOR_EXPERIMENT.md`](SPARSE_SENSOR_EXPERIMENT.md).
@@ -3697,20 +3707,24 @@ window-averaged change in all four stored thermal energies must be below
 transient.
 
 For each 2, 5, and 8 W target, the code first solves for an optimized
-continuous current. It then sweeps four periods and three duty cycles, solving
-for the pulse amplitude that produces the same delivered cooling. Current,
-temperature, reachability, and storage constraints are applied before the best
-pulse is selected.
+continuous current. It then sweeps four periods and six duty cycles from 0.25
+through 0.99, solving for the pulse amplitude that produces the same delivered
+cooling. Current, temperature, reachability, and storage constraints are
+applied before the highest-COP tested pulse is selected.
 
-The best pulse loses in the current model: its COP is 21.82%, 24.18%, and
-27.64% below the optimized continuous case at 2, 5, and 8 W. The conclusion
-also holds at equal electrical power: the pulses deliver 11.23%, 11.88%, and
-12.76% less cooling. The matched-cooling COP conclusion remains within 0.04
-percentage points over the contact-resistance uncertainty interval from the
-sparse inference. This negative result is retained because the
-constant-property lumped model contains quadratic Joule heating but no
-validated flow, spatial, or multi-assembly mechanism that makes pulsing more
-efficient.
+Every tested nontrivial pulse loses in the current model. At 75% duty the
+penalties are about 22--28%, but this is a duty slice—not a universal optimum.
+The highest-COP tested 99%-duty schedules are only 0.86%, 0.90%, and 1.04%
+below optimized continuous COP at 2, 5, and 8 W, and deliver 0.38%, 0.42%, and
+0.44% less cooling at equal electrical power. This approach to a tie is the
+required $D\rightarrow1$ limit. The stronger physical conclusion is that
+direct rectangular pulsing multiplies fixed-mean-current Joule heat by $1/D$;
+the penalty decreases continuously toward zero as the waveform becomes DC.
+
+Electrical energy is integrated per constant-current segment, so the $VI$
+jump at a switch is not replaced by a grid-dependent trapezoidal ramp. The
+capacity matcher also scans for the first rising crossing when a high-current
+endpoint lies past the nonmonotonic cooling maximum.
 
 See
 [`CONTROL_COMPARISON_EXPERIMENT.md`](CONTROL_COMPARISON_EXPERIMENT.md) for the
@@ -3725,7 +3739,7 @@ The score is the expected reduction in three-physical-parameter covariance
 volume after the nuisance parameters are included.
 
 Candidates must use no more than 30 J and remain inside 285--315 K face limits.
-Seventeen pass. The planner selects 0.8 A for 20 s, using 27.66 J and providing
+Seventeen pass. The planner selects 0.8 A for 20 s, using 27.54 J and providing
 7.198 nats of expected information. In 250 repeated linearized noise trials,
 it reduces joint log-parameter RMSE by 82.2% relative to the smallest feasible
 0.4 A, 5 s pulse while maintaining approximately nominal 95% coverage.
@@ -3807,11 +3821,11 @@ The complete definitions, settings, tables, and limitations are in
 
 #### 14.3.2 Seconds-scale pulse overlay
 
-The original fair pulse sweep is now plotted on the zero-external-lift steady
-COP envelope. The 360 s warm-up continuous points agree with the exact steady
-map within 0.04%. The optimized 10 s, 75% duty pulse winners remain below the
-envelope: their COP is 21.82%, 24.18%, and 27.64% lower at matched 2, 5, and
-8 W delivered cooling.
+The fair pulse sweep is plotted on the zero-external-lift steady COP envelope.
+The 360 s warm-up continuous points agree with the exact steady map within
+0.04%. At 75% duty, the best tested periods remain about 22--28% below the
+envelope. Extending the duty sweep through 99% reduces the highest-COP tested
+penalties to 0.86--1.04%, because those waveforms are nearly continuous.
 
 For a zero-to-peak rectangular pulse,
 
@@ -3822,9 +3836,11 @@ I_{\mathrm{rms}}=\sqrt{D} I_{\mathrm{peak}}.
 $$
 
 Displaying both statistics makes the physical penalty visible: Peltier heat
-is linear in current, while Joule heat follows RMS current squared. The
-storage-drift check remains below 0.013 W, so an unfinished transient is not
-being counted as cooling.
+is linear in current, while Joule heat follows RMS current squared. At fixed
+mean current, the direct-pulse Joule multiplier is $1/D$. The report now plots
+the duty curve explicitly, making the approach to the continuous limit visible.
+All retained points pass the storage-drift check, so an unfinished transient
+is not being counted as cooling.
 
 Run the connected study with:
 
@@ -3855,6 +3871,12 @@ $$
 -K(T_h-T_c).
 $$
 
+One shared four-node steady-state helper now accepts
+$(\overline I,\overline{I^2})$. Scalar DC calls it with $(I,I^2)$, while the
+PWM and material/geometry co-design paths supply their waveform moments. This
+removes three copies of the same thermal matrix and gives every path the same
+sign and energy-balance implementation.
+
 Direct zero-to-peak PWM has
 $\overline{I^2}/\overline I^2=1/D$. Smoothed current with triangular
 peak-to-peak ripple fraction $r$ has multiplier $1+r^2/12$. Thus, at 0.60 A
@@ -3876,7 +3898,11 @@ case delivers the same module cooling at wall COP 1.600; direct PWM delivers
 This is an averaged interface for later converter detail, not a complete
 power-electronics circuit. Efficiency, fixed loss, and ripple are prescribed;
 switching frequency, inductance, voltage, dead time, thermal limits, and a
-current-control loop remain future work.
+current-control loop remain future work. The closure also assumes
+$\overline{IT}=\overline I\,\overline T$ and therefore neglects
+$\mathrm{Cov}(I,T)$. That approximation requires electrical switching much
+faster than the thermal response and negligible face-temperature ripple within
+one switching cycle.
 
 Run:
 
