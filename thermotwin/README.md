@@ -24,6 +24,57 @@ at current switches, and parameter transfer to lower-amplitude and bipolar
 controls. It also includes the conventional scalar baseline and states the
 limits of the same-model synthetic comparison explicitly.
 
+## Engineering decision showcase
+
+The new CPU-first engineering workflow turns the validated model into four
+decision-oriented synthetic experiments:
+
+1. infer contact resistance, sensor lag, and two sensor biases using only the
+   cold and hot exchanger temperatures, including missing turn-off readings;
+2. reconstruct inaccessible face temperatures and transfer the inferred
+   quantities to a withheld bipolar schedule;
+3. compare optimized continuous and pulsed operation at equal delivered
+   cooling after a periodic warm-up; and
+4. select the next informative pulse under energy and temperature constraints,
+   then use it as a standardized synthetic assembly fingerprint.
+
+Run every experiment and generate the four-panel evidence figure with:
+
+~~~bash
+python3 -m thermotwin.engineering_showcase
+~~~
+
+The default output is
+`thermotwin/figures/engineering_decision_showcase.png`. The main results are:
+
+- exchanger-only inference recovers the 0.25 K/W hidden contact and estimates
+  1.5 s sensor lag as 1.536 s, with every frozen truth inside its local 95%
+  interval;
+- the withheld current schedule has 0.00181 K accessible-sensor RMSE;
+- optimized pulses have 21.8--27.6% lower COP at matched 2--8 W cooling and
+  deliver 11.2--12.8% less cooling at matched power in the current lumped
+  model;
+- the constrained planner selects 0.8 A for 20 s and reduces linearized joint
+  log-parameter RMSE by 82.2% versus the smallest feasible pulse; and
+- a five-assembly synthetic batch is correctly separated into low-loss,
+  reference-band, and elevated-loss contact groups.
+
+The negative pulsing result is retained intentionally. It says that this
+constant-property, fixed-reservoir model does not contain a mechanism that
+overcomes the higher-current Joule penalty. It is not a claim about a different
+physical device.
+
+Each experiment has a complete question-to-result walkthrough:
+
+- [`SPARSE_SENSOR_EXPERIMENT.md`](SPARSE_SENSOR_EXPERIMENT.md)
+- [`CONTROL_COMPARISON_EXPERIMENT.md`](CONTROL_COMPARISON_EXPERIMENT.md)
+- [`NEXT_EXPERIMENT_WALKTHROUGH.md`](NEXT_EXPERIMENT_WALKTHROUGH.md)
+- [`ASSEMBLY_FINGERPRINT_EXPERIMENT.md`](ASSEMBLY_FINGERPRINT_EXPERIMENT.md)
+
+[`HARDWARE_VALIDATION_PROTOCOL.md`](HARDWARE_VALIDATION_PROTOCOL.md) defines
+the measurement CSV and safety decisions needed for a future physical test.
+No hardware result is claimed or synthesized.
+
 This package is isolated from `pinn_heat`. Its first milestone implements the
 constant-property, quasi-steady thermoelectric relations
 
@@ -57,7 +108,8 @@ $$
 The `two_node_rhs` function returns the instantaneous temperature rates.
 `integrate_two_node` advances those rates through time with a fixed-step,
 classical fourth-order Runge--Kutta method. It accepts either a constant current
-or a `PiecewiseConstantCurrent` created with `constant`, `step`, or `pulse`.
+or a `PiecewiseConstantCurrent` created with `constant`, `step`, `pulse`, or
+`periodic_pulse`.
 Integration steps end exactly at scheduled current transitions so an abrupt
 switch is not averaged across one RK4 interval. Reservoir temperatures and
 external heat inputs remain constant during a run. The function returns the

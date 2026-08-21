@@ -315,8 +315,9 @@ can be measured rather than obscured.
 
 ## Milestone 5 — Identifiability and uncertainty
 
-**Status: Partial. Conventional single-parameter robustness is implemented;
-joint identifiability and calibrated uncertainty are not.**
+**Status: Partial. Joint accessible-sensor inference and local uncertainty are
+implemented; nonlinear interval coverage and broader identifiability mapping
+remain.**
 
 ### Goal
 
@@ -350,6 +351,12 @@ be reserved for representative cases where they add evidence.
 - Isolated bias, lag, turn-off missingness, sensor-restriction, and combined
   imperfection studies.
 - A local turn-off information metric.
+- Joint exchanger-only recovery of cold contact resistance, shared sensor lag,
+  and two sensor biases with structured missing readings.
+- A local four-parameter covariance, resistance-lag correlation, approximate
+  95% intervals, hidden-face reconstruction, and withheld-current transfer.
+- Repeated linearized noise trials for selected versus naive experiment
+  designs.
 
 ### Exit criteria
 
@@ -364,7 +371,8 @@ be reserved for representative cases where they add evidence.
 
 ## Milestone 6A — Control comparison
 
-**Status: Not started. Current schedules and COP diagnostics are ready.**
+**Status: Complete for the current single-assembly, fixed-reservoir,
+rectangular-pulse scope.**
 
 ### Goal
 
@@ -394,11 +402,26 @@ candidate count makes the conventional solver a demonstrated bottleneck.
 - Pulsed operation is allowed to win, lose, or tie according to the results.
 - Conclusions remain stable across selected parameter uncertainty.
 
+### Implemented result
+
+- Useful cooling is heat extracted from the cold reservoir, not instantaneous
+  module heat.
+- Candidates warm for 360 s and are evaluated for 120 s with an explicit
+  whole-system storage-drift check.
+- Continuous current and every feasible pulse are matched at 2, 5, and 8 W.
+- The best tested pulses have 21.8--27.6% lower COP than optimized continuous
+  current in the current model.
+- At equal electrical power, the same pulses deliver 11.2--12.8% less cooling.
+- The negative result remains stable across the inferred cold-contact
+  resistance interval.
+- The walkthrough is `CONTROL_COMPARISON_EXPERIMENT.md`.
+
 ---
 
 ## Milestone 6B — Next-experiment selection
 
-**Status: Not started.**
+**Status: Partial. Constrained local-information ranking and repeated
+linearized validation are implemented; complete nonlinear refitting remains.**
 
 ### Goal
 
@@ -429,6 +452,19 @@ heat-transfer parameter.
 - The selected experiment improves a predeclared uncertainty metric in
   simulation.
 - Improvement is measured against a baseline selection strategy.
+
+### Implemented result
+
+- Twenty-five amplitude/duration candidates are ranked after a 30 J energy
+  limit and face-temperature constraints.
+- The selected 0.8 A, 20 s pulse provides 7.198 nats of expected joint
+  information about contact resistance, face capacitance, and sensor lag while
+  including two nuisance biases.
+- In 250 repeated linearized noise trials, it reduces joint log-parameter RMSE
+  by 82.2% relative to the smallest feasible pulse.
+- The selected pulse also drives a five-unit synthetic assembly fingerprint.
+- A complete nonlinear refit across repeated trials is still required before
+  Milestone 6B is complete.
 
 ---
 
@@ -464,6 +500,10 @@ more clearly and reproducibly than a hurried interface.
 - Modular package, extensive tests, two levels of README documentation,
   experiment walkthroughs, learning worksheets, report commands, and a focused
   PINN showcase.
+- A one-command engineering decision showcase covering sparse diagnosis,
+  control comparison, experiment selection, and assembly screening.
+- Separate walkthroughs that retain negative results and distinguish local
+  synthetic uncertainty from hardware evidence.
 
 ### Exit criteria
 
@@ -477,7 +517,8 @@ more clearly and reproducibly than a hurried interface.
 
 ## Milestone 8 — Optional hardware validation
 
-**Status: Optional; not started.**
+**Status: Optional; measurement schema and protocol implemented, physical
+experiment not started.**
 
 ### Goal
 
@@ -508,9 +549,12 @@ Measure the synthetic-to-real gap with a safe benchtop Peltier experiment.
    sparse/missing-data comparison.
 2. Finish Milestone 4 by training the inverse PINN on selected imperfect
    datasets and comparing it fairly with the conventional estimator.
-3. Complete Milestone 5's two-parameter identifiability and uncertainty study.
-4. Run Milestone 6A's continuous-versus-pulsed control study.
-5. Use its feasible candidate space for Milestone 6B experiment selection.
+3. Extend Milestone 5's local joint inference to nonlinear repeated-fit
+   coverage and an explicitly underdetermined multi-parameter case.
+4. Finish Milestone 6B with complete nonlinear refits of selected and naive
+   experiments over repeated synthetic trials.
+5. Extend Milestone 6A only when new validated physics—such as flowing-fluid
+   states or multi-assembly staging—changes the control question.
 6. Finalize Milestone 7 deliverables throughout, rather than postponing all
    documentation until the end.
 7. Attempt Milestone 8 only if safe hardware and sufficient time are available.

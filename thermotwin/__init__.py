@@ -113,6 +113,13 @@ from .measurement_missingness import (
     run_missing_contact_reference_test_stand,
 )
 
+from .hardware_data import (
+    HardwareDataset,
+    HardwareDatasetSummary,
+    load_hardware_csv,
+    summarize_hardware_dataset,
+)
+
 __all__ = [
     "ContactExperimentResult",
     "ContactExperimentMetadata",
@@ -148,6 +155,8 @@ __all__ = [
     "ThermoelectricParameters",
     "TrajectoryDiagnostics",
     "ExperimentResult",
+    "HardwareDataset",
+    "HardwareDatasetSummary",
     "TwoNodeExperiment",
     "TwoNodeThermalParameters",
     "PiecewiseConstantCurrent",
@@ -186,6 +195,8 @@ __all__ = [
     "run_missing_contact_reference_test_stand",
     "run_noisy_contact_reference_test_stand",
     "run_noisy_biased_contact_reference_test_stand",
+    "load_hardware_csv",
+    "summarize_hardware_dataset",
     "thermal_contact_heat",
     "two_node_rhs",
     "two_node_steady_state",

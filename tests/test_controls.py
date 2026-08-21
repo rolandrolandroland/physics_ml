@@ -31,6 +31,41 @@ class PiecewiseConstantCurrentTests(unittest.TestCase):
         self.assertEqual(schedule.next_transition_after(1.0), 3.0)
         self.assertIsNone(schedule.next_transition_after(3.0))
 
+    def test_periodic_pulse_is_right_continuous(self):
+        schedule = PiecewiseConstantCurrent.periodic_pulse(
+            duration=25.0,
+            period=10.0,
+            duty_cycle=0.4,
+            pulse_current=1.2,
+        )
+
+        self.assertEqual(
+            schedule.transition_times,
+            (4.0, 10.0, 14.0, 20.0, 24.0),
+        )
+        self.assertEqual(schedule.value_at(3.999), 1.2)
+        self.assertEqual(schedule.value_at(4.0), 0.0)
+        self.assertEqual(schedule.value_at(10.0), 1.2)
+        self.assertEqual(schedule.value_at(25.0), 0.0)
+
+    def test_periodic_pulse_rejects_invalid_shape(self):
+        for keyword, value in (
+            ("duration", -1.0),
+            ("period", 0.0),
+            ("duty_cycle", 0.0),
+            ("duty_cycle", 1.0),
+        ):
+            arguments = dict(
+                duration=20.0,
+                period=10.0,
+                duty_cycle=0.5,
+                pulse_current=1.0,
+            )
+            arguments[keyword] = value
+            with self.subTest(keyword=keyword, value=value):
+                with self.assertRaises(ValueError):
+                    PiecewiseConstantCurrent.periodic_pulse(**arguments)
+
     def test_invalid_schedules_are_rejected(self):
         invalid_cases = (
             dict(transition_times=(1.0,), values=(0.0,)),

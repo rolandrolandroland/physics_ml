@@ -52,7 +52,19 @@ foundation of that larger goal. It contains:
    sparse synthetic temperature observations.
 31. A smooth four-state inverse PINN that infers the cold contact resistance and
     transfers it to unseen pulse regimes.
-32. Unit, sign, energy, sampling, measurement, numerical, PINN, and
+32. Joint contact-resistance, sensor-lag, and sensor-bias inference using only
+    cold- and hot-exchanger temperatures, including missing records.
+33. Local sensitivity intervals, parameter correlations, hidden-face
+    reconstruction, and whole-regime transfer for the accessible-sensor case.
+34. A fair periodic continuous-versus-pulsed comparison at matched delivered
+    cooling with energy-storage and temperature checks.
+35. Constrained next-pulse selection using expected joint information and a
+    repeated-noise validation against a naive pulse.
+36. Standardized synthetic assembly thermal fingerprints and contact-loss
+    classifications.
+37. A validated CSV bridge and explicit protocol for future hardware data.
+38. A one-command four-panel engineering decision showcase.
+39. Unit, sign, energy, sampling, measurement, numerical, PINN, and
     identifiability tests.
 
 The package does **not** yet represent a hardware-validated digital twin. Its
@@ -92,7 +104,7 @@ standard library. Run all current ThermoTwin tests with:
 python3 -m unittest discover -s tests
 ```
 
-The current suite contains 278 focused tests. Optional learned-model and report
+The current suite contains 300 focused tests. Optional learned-model and report
 tests are skipped
 when their optional dependencies are not installed.
 
@@ -112,6 +124,18 @@ Run the focused physics-only and inverse-PINN showcase:
 ```bash
 python3 -m thermotwin.pinn_showcase
 ```
+
+Run the CPU-first engineering decision showcase:
+
+```bash
+python3 -m thermotwin.engineering_showcase
+```
+
+This runs the sparse accessible-sensor inference, fair control comparison,
+next-experiment selection, and synthetic assembly-fingerprint study. It writes
+`thermotwin/figures/engineering_decision_showcase.png` and prints every
+principal result. The generated figure is ignored by Git and reproducible from
+the committed source.
 
 Train and validate the forward PINN:
 
@@ -3544,13 +3568,125 @@ resistance from ideal constant-current and switched-current datasets,
 respectively, while both contact forward PINNs keep both contacts fixed. None
 of these workflows
 calibrates a contact against hardware, and the hot contact has not been
-inferred. The observation schema
-identifies modeled sensor locations, but it does not
-yet represent physical sensor geometry, empirically calibrated noise, bias,
-lag, or missingness, random or value-dependent outages, automated calibration,
-sensor thermal loading, electrical contact resistance, or flowing-fluid
-states. Neither thermal contact resistance has yet been inferred from hardware
-data.
+inferred. The observation schema identifies modeled sensor locations and now
+supports controlled noise, bias, lag, and missingness. Those effects remain
+synthetic rather than empirically calibrated. The model does not yet represent
+physical sensor geometry, random or value-dependent outages, sensor thermal
+loading, electrical contact resistance, or flowing-fluid states. Neither
+thermal contact resistance has yet been inferred from hardware data.
+
+### 14.2 Engineering decision workflow
+
+The engineering showcase connects four previously separate ideas into a
+single CPU-first chain:
+
+```text
+accessible exchanger measurements
+    -> hidden-loss and sensor inference
+    -> local parameter uncertainty
+    -> fair control comparison
+    -> constrained next experiment
+    -> standardized assembly fingerprint
+```
+
+Run the chain and save its evidence figure with:
+
+```bash
+python3 -m thermotwin.engineering_showcase
+```
+
+#### 14.2.1 Accessible-sensor inverse problem
+
+The visible dataset contains only cold- and hot-exchanger temperatures. The
+two thermoelectric-face temperatures are withheld. The current schedule has a
+1 A pulse, a recovery interval, and a separate 0.55 A pulse. Both sensors have
+a hidden 1.5 s first-order lag, independent biases, and 0.02 K Gaussian noise.
+The cold sensor loses seven records around the first turn-off.
+
+The estimator searches jointly over cold contact resistance and shared sensor
+lag. For each candidate pair, it profiles the two constant sensor biases using
+their analytic least-squares means. The frozen estimate is 0.25000 K/W for a
+0.25000 K/W truth and 1.5359 s for a 1.5000 s lag. Both biases are recovered
+within about 0.002 K, and the observation RMSE is 0.02151 K.
+
+Finite-difference sensitivities give a local covariance for resistance, lag,
+and both biases. The resistance-lag correlation is -0.583, which quantifies
+their transient confounding rather than assuming it away. All four hidden
+truths fall inside the local 95% intervals. Transferring the estimates to a
+withheld positive-and-negative current schedule gives 0.00181 K noiseless
+accessible-sensor RMSE.
+
+The complete derivation, dataset definition, results, and limitations are in
+[`SPARSE_SENSOR_EXPERIMENT.md`](SPARSE_SENSOR_EXPERIMENT.md).
+
+#### 14.2.2 Fair continuous-versus-pulsed comparison
+
+Useful cooling is defined as the time-averaged heat extracted from the cold
+reservoir, $G_c(T_{c,\infty}-T_{x,c})$. Electrical input is the time integral
+of $VI$. Candidates warm for 360 s and are compared over a 120 s window. The
+window-averaged change in all four stored thermal energies must be below
+0.05 W, preventing a pulse from receiving COP credit for an unfinished
+transient.
+
+For each 2, 5, and 8 W target, the code first solves for an optimized
+continuous current. It then sweeps four periods and three duty cycles, solving
+for the pulse amplitude that produces the same delivered cooling. Current,
+temperature, reachability, and storage constraints are applied before the best
+pulse is selected.
+
+The best pulse loses in the current model: its COP is 21.82%, 24.18%, and
+27.64% below the optimized continuous case at 2, 5, and 8 W. The conclusion
+also holds at equal electrical power: the pulses deliver 11.23%, 11.88%, and
+12.76% less cooling. The matched-cooling COP conclusion remains within 0.04
+percentage points over the contact-resistance uncertainty interval from the
+sparse inference. This negative result is retained because the
+constant-property lumped model contains quadratic Joule heating but no
+validated flow, spatial, or multi-assembly mechanism that makes pulsing more
+efficient.
+
+See
+[`CONTROL_COMPARISON_EXPERIMENT.md`](CONTROL_COMPARISON_EXPERIMENT.md) for the
+equations, candidate grid, result table, and interpretation.
+
+#### 14.2.3 Constrained experiment selection
+
+The planner considers 25 single pulses built from five amplitudes and five
+durations. It estimates the local Jacobian with respect to log cold contact
+resistance, log cold-face capacitance, log sensor lag, and two nuisance biases.
+The score is the expected reduction in three-physical-parameter covariance
+volume after the nuisance parameters are included.
+
+Candidates must use no more than 30 J and remain inside 285--315 K face limits.
+Seventeen pass. The planner selects 0.8 A for 20 s, using 27.66 J and providing
+7.198 nats of expected information. In 250 repeated linearized noise trials,
+it reduces joint log-parameter RMSE by 82.2% relative to the smallest feasible
+0.4 A, 5 s pulse while maintaining approximately nominal 95% coverage.
+
+The ranking method and its local-linear limitations are in
+[`NEXT_EXPERIMENT_WALKTHROUGH.md`](NEXT_EXPERIMENT_WALKTHROUGH.md).
+
+#### 14.2.4 Assembly fingerprint
+
+The selected 0.8 A, 20 s pulse becomes a standardized synthetic quality test.
+Five assemblies with cold contact resistances from 0.15 to 0.50 K/W are
+observed through the two exchanger sensors with 0.02 K noise. One-dimensional
+fits recover all five hidden values within their local 95% intervals and
+separate low-loss, reference-band, and elevated-loss groups.
+
+The classification thresholds are illustrative software defaults, not
+manufacturing limits. The complete synthetic batch is documented in
+[`ASSEMBLY_FINGERPRINT_EXPERIMENT.md`](ASSEMBLY_FINGERPRINT_EXPERIMENT.md).
+
+#### 14.2.5 Hardware boundary
+
+[`hardware_data.py`](hardware_data.py) validates future CSV files containing
+time, current, cold- and hot-exchanger temperatures, and optional voltage. It
+preserves blank temperature cells as missing observations. The loader cannot
+establish sensor placement, calibration, or safe operating limits.
+
+No hardware run has been performed. The required safety decisions, data
+contract, experiment sequence, and withheld-validation rule are defined in
+[`HARDWARE_VALIDATION_PROTOCOL.md`](HARDWARE_VALIDATION_PROTOCOL.md).
 
 ---
 
@@ -3566,6 +3702,12 @@ thermotwin/
 ├── contact_diagnostics.py
 ├── contact_experiments.py
 ├── contact_report.py
+├── control_comparison.py
+├── sparse_sensor_inference.py
+├── experiment_selection.py
+├── assembly_fingerprint.py
+├── hardware_data.py
+├── small_matrix.py
 ├── figure_paths.py
 ├── figures/                 # generated and ignored by Git
 ├── diagnostics.py
@@ -3579,6 +3721,7 @@ thermotwin/
 ├── piecewise_inverse_contact_resistance.py
 ├── piecewise_inverse_contact_resistance_report.py
 ├── pinn_showcase.py
+├── engineering_showcase.py
 ├── inverse_thermal_conductance.py
 ├── inverse_contact_resistance.py
 ├── inverse_contact_resistance_report.py
@@ -3597,6 +3740,11 @@ thermotwin/
 ├── contact_resistance_combined_study.py
 ├── CONTACT_RESISTANCE_EXPERIMENT.md
 ├── PINN_SHOWCASE.md
+├── SPARSE_SENSOR_EXPERIMENT.md
+├── CONTROL_COMPARISON_EXPERIMENT.md
+├── NEXT_EXPERIMENT_WALKTHROUGH.md
+├── ASSEMBLY_FINGERPRINT_EXPERIMENT.md
+├── HARDWARE_VALIDATION_PROTOCOL.md
 ├── requirements-pinn.txt
 ├── README.md
 ├── README_detailed.md
@@ -3610,6 +3758,13 @@ tests/
 ├── test_contact_diagnostics.py
 ├── test_contact_experiments.py
 ├── test_contact_report.py
+├── test_control_comparison.py
+├── test_sparse_sensor_inference.py
+├── test_experiment_selection.py
+├── test_assembly_fingerprint.py
+├── test_hardware_data.py
+├── test_small_matrix.py
+├── test_engineering_showcase.py
 ├── test_diagnostics.py
 ├── test_experiments.py
 ├── test_forward_pinn.py
@@ -3673,12 +3828,19 @@ The planned learning and implementation sequence is:
     demonstration of the validated forward and inverse capabilities.
 12. Compare piecewise PINN and conventional recovery on the same missing,
     restricted-sensor, noisy, biased, lagged, and combined pulse observations.
-13. Extend practical-identifiability studies to uncertain physical parameters
-   and simultaneous unknowns.
-14. Compare continuous and pulsed control strategies.
-15. Rank candidate experiments by sensitivity or predicted information gain.
-16. Validate against hardware only after measurement definitions, safety
-    limits, sensor locations, and fluid interfaces are agreed.
+13. Preserve the exchanger-only joint resistance/lag/bias inference,
+    correlations, intervals, and withheld-schedule validation.
+14. Preserve the equal-capacity control comparison, storage-drift safeguard,
+    negative pulse result, and uncertainty stress test.
+15. Preserve the constrained experiment ranking, repeated-noise check, and
+    standardized synthetic assembly fingerprint.
+16. Extend the local experiment-selection validation to complete nonlinear
+    repeated fits and additional uncertain physical parameters.
+17. Compare physics-informed and observation-only learning on identical
+    imperfect accessible-sensor datasets.
+18. Validate against hardware only after the documented measurement
+    definitions, safety limits, sensor locations, and fluid interfaces are
+    agreed.
 
 Both READMEs should be updated as each milestone changes package behavior. The
 concise README should remain quick to scan; this detailed README should explain

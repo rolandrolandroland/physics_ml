@@ -82,6 +82,59 @@ class PiecewiseConstantCurrent:
             values=(baseline_current, pulse_current, baseline_current),
         )
 
+    @classmethod
+    def periodic_pulse(
+        cls,
+        *,
+        duration: float,
+        period: float,
+        duty_cycle: float,
+        pulse_current: float,
+        baseline_current: float = 0.0,
+    ) -> "PiecewiseConstantCurrent":
+        """Return a repeating pulse that begins in its on state.
+
+        Transitions at or beyond ``duration`` are omitted. This keeps the
+        finite-horizon schedule compact and makes its last sampled value
+        unambiguous under the package's right-continuous convention.
+        """
+
+        for name, value in (
+            ("duration", duration),
+            ("period", period),
+            ("duty cycle", duty_cycle),
+            ("pulse current", pulse_current),
+            ("baseline current", baseline_current),
+        ):
+            if not math.isfinite(value):
+                raise ValueError(f"{name} must be finite")
+        if duration < 0.0:
+            raise ValueError("duration must be nonnegative")
+        if period <= 0.0:
+            raise ValueError("period must be positive")
+        if duty_cycle <= 0.0 or duty_cycle >= 1.0:
+            raise ValueError(
+                "duty cycle must lie strictly between zero and one"
+            )
+
+        on_duration = period * duty_cycle
+        off_duration = period - on_duration
+        transition_times = []
+        values = [pulse_current]
+        transition_time = on_duration
+        entering_on_state = False
+        tolerance = 1e-12 * max(1.0, duration)
+        while transition_time < duration - tolerance:
+            transition_times.append(transition_time)
+            values.append(
+                pulse_current if entering_on_state else baseline_current
+            )
+            transition_time += (
+                on_duration if entering_on_state else off_duration
+            )
+            entering_on_state = not entering_on_state
+        return cls(tuple(transition_times), tuple(values))
+
     def value_at(self, time: float) -> float:
         """Return the right-continuous current value at ``time`` in seconds."""
 
