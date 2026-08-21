@@ -7,6 +7,7 @@ from thermotwin import (
     TwoNodeThermalParameters,
     electrical_power,
     four_node_contact_rhs,
+    four_node_contact_steady_state,
     integrate_four_node_contact,
     integrate_two_node,
     thermal_contact_heat,
@@ -69,6 +70,102 @@ class ContactTransientTests(unittest.TestCase):
         self.assertAlmostEqual(rates.hot_face, -0.0875)
         self.assertAlmostEqual(rates.cold_exchanger, -0.14)
         self.assertAlmostEqual(rates.hot_exchanger, 0.16)
+
+    def test_steady_state_solves_all_four_balances(self):
+        inputs = dict(
+            current=0.8,
+            cold_reservoir_temperature=292.5,
+            hot_reservoir_temperature=307.5,
+            cold_external_heat=1.0,
+            hot_external_heat=-0.5,
+        )
+        steady = four_node_contact_steady_state(
+            self.thermoelectric,
+            self.thermal,
+            **inputs,
+        )
+
+        rates = four_node_contact_rhs(
+            self.thermoelectric,
+            self.thermal,
+            cold_face_temperature=steady.cold_face,
+            hot_face_temperature=steady.hot_face,
+            cold_exchanger_temperature=steady.cold_exchanger,
+            hot_exchanger_temperature=steady.hot_exchanger,
+            **inputs,
+        )
+
+        for rate in rates:
+            self.assertAlmostEqual(rate, 0.0, places=12)
+
+    def test_long_integration_approaches_four_node_steady_state(self):
+        inputs = dict(
+            current=0.7,
+            cold_reservoir_temperature=295.0,
+            hot_reservoir_temperature=305.0,
+        )
+        steady = four_node_contact_steady_state(
+            self.thermoelectric,
+            self.thermal,
+            **inputs,
+        )
+        trajectory = integrate_four_node_contact(
+            self.thermoelectric,
+            self.thermal,
+            initial_cold_face_temperature=300.0,
+            initial_hot_face_temperature=300.0,
+            initial_cold_exchanger_temperature=300.0,
+            initial_hot_exchanger_temperature=300.0,
+            duration=1200.0,
+            time_step=0.5,
+            **inputs,
+        )
+
+        self.assertAlmostEqual(trajectory.cold_face[-1], steady.cold_face, places=5)
+        self.assertAlmostEqual(trajectory.hot_face[-1], steady.hot_face, places=5)
+        self.assertAlmostEqual(
+            trajectory.cold_exchanger[-1], steady.cold_exchanger, places=5
+        )
+        self.assertAlmostEqual(
+            trajectory.hot_exchanger[-1], steady.hot_exchanger, places=5
+        )
+
+    def test_steady_state_is_independent_of_thermal_capacitances(self):
+        changed_capacitances = FourNodeContactThermalParameters(
+            cold_face_thermal_capacitance=5.0,
+            hot_face_thermal_capacitance=7.0,
+            cold_exchanger_thermal_capacitance=11.0,
+            hot_exchanger_thermal_capacitance=13.0,
+            cold_contact_resistance=self.thermal.cold_contact_resistance,
+            hot_contact_resistance=self.thermal.hot_contact_resistance,
+            cold_reservoir_conductance=self.thermal.cold_reservoir_conductance,
+            hot_reservoir_conductance=self.thermal.hot_reservoir_conductance,
+        )
+        inputs = dict(
+            current=0.9,
+            cold_reservoir_temperature=290.0,
+            hot_reservoir_temperature=310.0,
+        )
+
+        baseline = four_node_contact_steady_state(
+            self.thermoelectric, self.thermal, **inputs
+        )
+        changed = four_node_contact_steady_state(
+            self.thermoelectric, changed_capacitances, **inputs
+        )
+
+        for baseline_value, changed_value in zip(baseline, changed):
+            self.assertAlmostEqual(baseline_value, changed_value)
+
+    def test_steady_state_rejects_nonfinite_inputs(self):
+        with self.assertRaises(ValueError):
+            four_node_contact_steady_state(
+                self.thermoelectric,
+                self.thermal,
+                current=float("nan"),
+                cold_reservoir_temperature=300.0,
+                hot_reservoir_temperature=300.0,
+            )
 
     def test_whole_system_energy_rate_includes_only_external_exchange(self):
         inputs = dict(

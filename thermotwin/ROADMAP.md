@@ -371,8 +371,8 @@ be reserved for representative cases where they add evidence.
 
 ## Milestone 6A — Control comparison
 
-**Status: Complete for the current single-assembly, fixed-reservoir,
-rectangular-pulse scope.**
+**Status: Complete for the current generic single-assembly, fixed-reservoir,
+rectangular-pulse, and first averaged-electronics scope.**
 
 ### Goal
 
@@ -395,6 +395,12 @@ The conventional solver—not a PINN—is the default control-sweep engine becau
 it is fast and already validated. A neural surrogate is justified only if the
 candidate count makes the conventional solver a demonstrated bottleneck.
 
+Seconds-scale thermal pulses and high-frequency electrical PWM are now treated
+as different experiments. The former is resolved by the transient solver. The
+latter passes mean and mean-square current plus explicit converter losses into
+the thermal equations instead of shrinking the thermal step to the switching
+period.
+
 ### Exit criteria
 
 - Comparisons use explicit fair constraints.
@@ -414,7 +420,23 @@ candidate count makes the conventional solver a demonstrated bottleneck.
 - At equal electrical power, the same pulses deliver 11.2--12.8% less cooling.
 - The negative result remains stable across the inferred cold-contact
   resistance interval.
-- The walkthrough is `CONTROL_COMPARISON_EXPERIMENT.md`.
+- An exact 840-point steady map covers 0--30 K external lift, 0.05--1.50 A,
+  reduced and explicit-contact topologies, three interface resistances, and
+  both cooling and heating COP.
+- At equal 3 W cooling, baseline 0.25 K/W contacts reduce COP by 19--35% over
+  the feasible 0--25 K lift range; the target is infeasible at 30 K under the
+  current bound.
+- The warmed continuous control points agree with the algebraic steady COP
+  envelope within 0.04%, and the optimized pulses remain below it.
+- The first averaged power-electronics comparison distinguishes direct current
+  chopping from smoothed PWM-derived current through $\overline I$ and
+  $\overline{I^2}$, and reports module versus wall-plug COP separately.
+- At 0.6 A mean current, direct 1.5 A chopping produces 2.5 times the ideal-DC
+  Joule heat, while the frozen 10% triangular-ripple smoothed case produces
+  1.0008 times.
+- Walkthroughs are `CONTROL_COMPARISON_EXPERIMENT.md`,
+  `COP_OPERATING_MAP_EXPERIMENT.md`, `PULSE_OPERATING_MAP_EXPERIMENT.md`, and
+  `PWM_POWER_ELECTRONICS_EXPERIMENT.md`.
 
 ---
 
@@ -553,8 +575,9 @@ Measure the synthetic-to-real gap with a safe benchtop Peltier experiment.
    coverage and an explicitly underdetermined multi-parameter case.
 4. Finish Milestone 6B with complete nonlinear refits of selected and naive
    experiments over repeated synthetic trials.
-5. Extend Milestone 6A only when new validated physics—such as flowing-fluid
-   states or multi-assembly staging—changes the control question.
+5. Refine Milestone 6A only when new validated physics—such as flowing-fluid
+   states, a calibrated converter loss map, or multi-assembly staging—changes
+   the control question.
 6. Finalize Milestone 7 deliverables throughout, rather than postponing all
    documentation until the end.
 7. Attempt Milestone 8 only if safe hardware and sufficient time are available.

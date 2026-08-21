@@ -15,6 +15,7 @@ from .thermoelectric import (
     cold_side_heat,
     hot_side_heat,
 )
+from .small_matrix import inverse_and_determinant
 
 
 @dataclass(frozen=True)
@@ -93,6 +94,15 @@ class FourNodeContactTemperatureTrajectory(NamedTuple):
     hot_face: Tuple[float, ...]
     cold_exchanger: Tuple[float, ...]
     hot_exchanger: Tuple[float, ...]
+
+
+class FourNodeContactSteadyState(NamedTuple):
+    """Unique constant-input four-node equilibrium temperatures in kelvin."""
+
+    cold_face: float
+    hot_face: float
+    cold_exchanger: float
+    hot_exchanger: float
 
 
 def thermal_contact_heat(
@@ -194,6 +204,91 @@ def four_node_contact_rhs(
             / thermal_parameters.hot_exchanger_thermal_capacitance
         ),
     )
+
+
+def four_node_contact_steady_state(
+    thermoelectric_parameters: ThermoelectricParameters,
+    thermal_parameters: FourNodeContactThermalParameters,
+    *,
+    current: float,
+    cold_reservoir_temperature: float,
+    hot_reservoir_temperature: float,
+    cold_external_heat: float = 0.0,
+    hot_external_heat: float = 0.0,
+) -> FourNodeContactSteadyState:
+    """Solve the four constant-input balances with all storage rates zero.
+
+    With constant thermoelectric properties and fixed current, the four
+    balances form a linear system in the two face and two exchanger
+    temperatures. Thermal capacitances do not affect this equilibrium.
+    """
+
+    finite_inputs = (
+        current,
+        cold_reservoir_temperature,
+        hot_reservoir_temperature,
+        cold_external_heat,
+        hot_external_heat,
+    )
+    if any(not math.isfinite(value) for value in finite_inputs):
+        raise ValueError("steady-state inputs must be finite")
+
+    alpha_current = thermoelectric_parameters.seebeck_coefficient * current
+    module_conductance = thermoelectric_parameters.thermal_conductance
+    half_joule_heat = (
+        0.5
+        * current**2
+        * thermoelectric_parameters.electrical_resistance
+    )
+    cold_contact_conductance = 1.0 / thermal_parameters.cold_contact_resistance
+    hot_contact_conductance = 1.0 / thermal_parameters.hot_contact_resistance
+    cold_reservoir_conductance = thermal_parameters.cold_reservoir_conductance
+    hot_reservoir_conductance = thermal_parameters.hot_reservoir_conductance
+
+    coefficients = (
+        (
+            alpha_current + module_conductance + cold_contact_conductance,
+            -module_conductance,
+            -cold_contact_conductance,
+            0.0,
+        ),
+        (
+            -module_conductance,
+            -alpha_current + module_conductance + hot_contact_conductance,
+            0.0,
+            -hot_contact_conductance,
+        ),
+        (
+            -cold_contact_conductance,
+            0.0,
+            cold_reservoir_conductance + cold_contact_conductance,
+            0.0,
+        ),
+        (
+            0.0,
+            -hot_contact_conductance,
+            0.0,
+            hot_reservoir_conductance + hot_contact_conductance,
+        ),
+    )
+    source = (
+        half_joule_heat,
+        half_joule_heat,
+        (
+            cold_reservoir_conductance * cold_reservoir_temperature
+            + cold_external_heat
+        ),
+        (
+            hot_reservoir_conductance * hot_reservoir_temperature
+            + hot_external_heat
+        ),
+    )
+    inverse, _ = inverse_and_determinant(coefficients)
+    solution = tuple(
+        sum(coefficient * value for coefficient, value in zip(row, source))
+        for row in inverse
+    )
+    return FourNodeContactSteadyState(*solution)
 
 
 def integrate_four_node_contact(

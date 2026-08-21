@@ -95,6 +95,20 @@ conclusion is therefore stable across the current resistance uncertainty.
 This is not a claim that the conclusion is stable to every uncertain thermal
 parameter.
 
+## Connection to the steady map and electrical PWM
+
+The continuous and pulsed markers are now overlaid on the exact steady
+zero-lift COP envelope in
+[`PULSE_OPERATING_MAP_EXPERIMENT.md`](PULSE_OPERATING_MAP_EXPERIMENT.md).
+The warmed continuous results agree with that algebraic envelope within 0.04%,
+while every optimized pulse remains below it.
+
+These 10--60 s schedules are thermal control pulses, not high-frequency
+switch-mode PWM. The separate
+[`PWM_POWER_ELECTRONICS_EXPERIMENT.md`](PWM_POWER_ELECTRONICS_EXPERIMENT.md)
+models mean current, mean-square current, and converter loss without stepping
+the thermal model at an electrical switching frequency.
+
 ## Reproduce
 
 ```bash

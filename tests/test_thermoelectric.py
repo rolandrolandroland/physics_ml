@@ -7,6 +7,7 @@ from thermotwin import (
     conductive_heat_leak,
     electrical_power,
     hot_side_heat,
+    heating_coefficient_of_performance,
     joule_heating,
     peltier_heat,
     voltage,
@@ -89,6 +90,33 @@ class ThermoelectricModelTests(unittest.TestCase):
                     self.cold_temperature,
                 )
                 self.assertAlmostEqual(hot_heat - cold_heat, power)
+
+    def test_heating_cop_is_cooling_cop_plus_one(self):
+        current = 3.0
+
+        cooling_cop = coefficient_of_performance(
+            self.parameters,
+            current,
+            self.hot_temperature,
+            self.cold_temperature,
+        )
+        heating_cop = heating_coefficient_of_performance(
+            self.parameters,
+            current,
+            self.hot_temperature,
+            self.cold_temperature,
+        )
+
+        self.assertAlmostEqual(heating_cop, cooling_cop + 1.0)
+
+    def test_heating_cop_is_undefined_at_zero_power(self):
+        with self.assertRaises(ZeroDivisionError):
+            heating_coefficient_of_performance(
+                self.parameters,
+                0.0,
+                self.hot_temperature,
+                self.cold_temperature,
+            )
 
     def test_zero_current_is_passive_hot_to_cold_conduction(self):
         current = 0.0

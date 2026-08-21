@@ -71,6 +71,51 @@ Each experiment has a complete question-to-result walkthrough:
 - [`NEXT_EXPERIMENT_WALKTHROUGH.md`](NEXT_EXPERIMENT_WALKTHROUGH.md)
 - [`ASSEMBLY_FINGERPRINT_EXPERIMENT.md`](ASSEMBLY_FINGERPRINT_EXPERIMENT.md)
 
+## Efficiency and electrical-drive maps
+
+Three linked experiments now turn the contact-aware model into an explicit
+efficiency operating envelope:
+
+1. a steady cooling/heating COP map over 0--1.5 A, 0--30 K external lift,
+   three contact resistances, and the reduced no-explicit-contact topology;
+2. an overlay of the existing seconds-scale pulse winners on the steady
+   continuous-current COP envelope; and
+3. a thermally averaged power-electronics layer that distinguishes ideal DC,
+   smoothed PWM-derived current, and direct zero-to-peak current PWM.
+
+Run the reports with:
+
+~~~bash
+python3 -m thermotwin.cop_operating_map_report
+python3 -m thermotwin.pulse_operating_map_report
+python3 -m thermotwin.pwm_power_electronics_report
+~~~
+
+The generic baseline shows that equal 0.25 K/W contacts reduce 3 W cooling COP
+by about 19--35% over 0--25 K external lift relative to the reduced topology;
+the target becomes infeasible at 30 K below the 1.5 A current bound. The
+seconds-scale continuous baselines agree with the exact steady map within
+0.04%, and their optimized pulse counterparts remain 21.8--27.6% below the
+continuous COP envelope.
+
+For electrical PWM, Peltier heat uses mean current while Joule heat uses
+mean-square current. At 0.6 A mean current, direct 1.5 A chopping has 2.5 times
+the DC Joule heat; the frozen 10% triangular-ripple smoothed case has only
+1.0008 times. Converter input power is reported separately from module
+terminal power so module COP and wall-plug COP are not confused.
+
+The equations, settings, results, interpretation, and limits are documented in:
+
+- [`COP_OPERATING_MAP_EXPERIMENT.md`](COP_OPERATING_MAP_EXPERIMENT.md)
+- [`PULSE_OPERATING_MAP_EXPERIMENT.md`](PULSE_OPERATING_MAP_EXPERIMENT.md)
+- [`PWM_POWER_ELECTRONICS_EXPERIMENT.md`](PWM_POWER_ELECTRONICS_EXPERIMENT.md)
+
+The corresponding physics-and-code exercise sheets are
+[`notes/19_cop_operating_map.md`](notes/19_cop_operating_map.md),
+[`notes/20_pulse_operating_envelope.md`](notes/20_pulse_operating_envelope.md),
+and
+[`notes/21_pwm_power_electronics.md`](notes/21_pwm_power_electronics.md).
+
 [`HARDWARE_VALIDATION_PROTOCOL.md`](HARDWARE_VALIDATION_PROTOCOL.md) defines
 the measurement CSV and safety decisions needed for a future physical test.
 No hardware result is claimed or synthesized.

@@ -26,6 +26,9 @@ choice. They are intentionally separate from the package README.
 | [16 — Inverse contact-resistance PINN](16_inverse_contact_resistance_pinn.md) | Understand positive resistance parameterization, sparse cold-pair observations, joint physics/data loss, identifiability, conventional comparison, and parameter transfer to unseen pulses | Not started |
 | [17 — Piecewise contact forward PINN](17_piecewise_contact_forward_pinn.md) | Understand switched-current physics, continuous temperatures, discontinuous rates, domain decomposition, exact interface chaining, collocation, routing, and RK4 validation | Not started |
 | [18 — Piecewise inverse contact resistance](18_piecewise_inverse_contact_resistance.md) | Understand shared positive resistance inference from a pulse, joint physics/data loss, loss weighting, identical-data comparison, switch continuity, identifiability, and parameter transfer | Not started |
+| [19 — COP operating maps](19_cop_operating_map.md) | Understand cooling/heating COP, current and lift sweeps, contact penalties, algebraic steady state, useful-capacity thresholds, and fair equal-load comparisons | Not started |
+| [20 — Pulse operating envelope](20_pulse_operating_envelope.md) | Understand how seconds-scale transient pulses connect to the steady COP map, fair objectives, mean/RMS current, storage drift, and negative control results | Not started |
+| [21 — PWM power electronics](21_pwm_power_electronics.md) | Understand direct versus smoothed PWM current, first and second current moments, averaged thermoelectric heat, converter loss, wall COP, code, tests, and next electrical extensions | Not started |
 
 Suggested statuses are `Not started`, `Draft`, `Revising`, and `Reviewed`.
 

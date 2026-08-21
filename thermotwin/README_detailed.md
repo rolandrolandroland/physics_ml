@@ -64,7 +64,15 @@ foundation of that larger goal. It contains:
     classifications.
 37. A validated CSV bridge and explicit protocol for future hardware data.
 38. A one-command four-panel engineering decision showcase.
-39. Unit, sign, energy, sampling, measurement, numerical, PINN, and
+39. Algebraic two-node and four-node steady-state solvers for fast operating
+    sweeps, independently checked against zero-rate balances and RK4.
+40. Cooling/heating COP maps over current, external temperature lift, contact
+    resistance, and reduced versus explicit-contact topology.
+41. A connection between the optimized seconds-scale pulse study and the
+    steady continuous-current COP envelope.
+42. A thermally averaged power-electronics layer using mean and mean-square
+    current, with direct and smoothed PWM cases and separate wall-plug power.
+43. Unit, sign, energy, sampling, measurement, numerical, PINN, and
     identifiability tests.
 
 The package does **not** yet represent a hardware-validated digital twin. Its
@@ -104,7 +112,7 @@ standard library. Run all current ThermoTwin tests with:
 python3 -m unittest discover -s tests
 ```
 
-The current suite contains 300 focused tests. Optional learned-model and report
+The current suite contains 331 focused tests. Optional learned-model and report
 tests are skipped
 when their optional dependencies are not installed.
 
@@ -181,6 +189,24 @@ Generate the contact-aware comparison and resistance sweep:
 
 ~~~bash
 python3 -m thermotwin.contact_report
+~~~
+
+Generate the steady cooling/heating COP operating map:
+
+~~~bash
+python3 -m thermotwin.cop_operating_map_report
+~~~
+
+Place the optimized seconds-scale pulse results on that steady map:
+
+~~~bash
+python3 -m thermotwin.pulse_operating_map_report
+~~~
+
+Generate the direct-versus-smoothed averaged PWM and wall-power report:
+
+~~~bash
+python3 -m thermotwin.pwm_power_electronics_report
 ~~~
 
 Audit virtual dataset provenance, completeness, ranges, and whole-regime
@@ -3306,6 +3332,26 @@ Checks:
 - systematic error larger than random trial spread; and
 - explicit pipeline, control, observation-error, and truth-error reporting.
 
+### 12.26 Operating-map, pulse-overlay, and PWM tests
+
+The new operating tests check:
+
+- all four algebraic contact-state balances and independent RK4 convergence;
+- independence of steady temperature from thermal capacitance;
+- cooling/heating energy closure and
+  $\mathrm{COP}_h=\mathrm{COP}_c+1$ where both are meaningful;
+- complete lift/current/contact grids and exclusion of tiny-capacity COP
+  optima;
+- equal-load contact penalties, extra face lift, and infeasible targets;
+- agreement of warmed continuous transients with the exact steady envelope;
+- rectangular-pulse mean and RMS current statistics;
+- the frozen negative pulse result under both equal-cooling and equal-power
+  comparisons;
+- averaged thermoelectric energy closure using mean and mean-square current;
+- direct-PWM duty-one and smoothed-PWM zero-ripple limiting cases;
+- the separate effect of converter loss on wall COP; and
+- valid PNG generation in the ignored package figures directory.
+
 ---
 
 ## 13. Validation levels and what they mean
@@ -3547,6 +3593,13 @@ The current results depend on these assumptions:
     0--1--0 A training pulse, shares one positive cold contact resistance
     across three temperature subnetworks, weights the normalized observation
     loss by 20, and keeps every other physical parameter fixed.
+29. The COP map assumes constant inputs, fixed reservoirs symmetric around
+    300 K, 0--1.5 A current, zero external heat inputs, and a 1 W minimum useful
+    rate when naming a maximum-COP point.
+30. The first power-electronics layer prescribes direct-PWM peak current or
+    smoothed triangular current ripple, assumes 95% converter efficiency and
+    0.05 W fixed switching loss, and averages electrical current moments rather
+    than resolving a converter circuit or switching edges.
 
 ### 14.1 Contact-resistance scope
 
@@ -3688,6 +3741,142 @@ No hardware run has been performed. The required safety decisions, data
 contract, experiment sequence, and withheld-validation rule are defined in
 [`HARDWARE_VALIDATION_PROTOCOL.md`](HARDWARE_VALIDATION_PROTOCOL.md).
 
+### 14.3 Efficiency operating maps and electrical drive
+
+The operating-map extension separates three questions that are often blurred
+together: steady thermoelectric efficiency, seconds-scale thermal pulsing, and
+high-frequency switch-mode electrical drive.
+
+#### 14.3.1 Exact steady-state map
+
+For constant current and constant properties, the two-node and four-node
+zero-storage balances form small linear systems. The algebraic solvers compute
+exact equilibria without integrating every operating point for many thermal
+time constants. Their outputs are checked against the original right-hand
+sides and long RK4 trajectories.
+
+The frozen map sweeps external reservoir lift from 0 to 30 K, current from
+0.05 to 1.50 A, symmetric contact resistance through 0.10, 0.25, and 0.50 K/W,
+and the reduced topology with no explicit interfaces. It records external,
+exchanger, and face lifts separately. Useful steady heat is measured at the
+reservoir boundary:
+
+$$
+\dot Q_{c,\mathrm{del}}=G_c(T_{c,\infty}-T_{x,c}),
+\qquad
+\dot Q_{h,\mathrm{del}}=G_h(T_{x,h}-T_{h,\infty}).
+$$
+
+Cooling and heating COP divide those rates by module terminal power. At steady
+state the module and delivered rates agree, and energy closure gives
+$\mathrm{COP}_h=\mathrm{COP}_c+1$ whenever both ratios are meaningful. A
+reported maximum COP must deliver at least 1 W so a near-zero-power,
+near-zero-capacity ratio is not labeled a useful optimum.
+
+For baseline 0.25 K/W contacts, maximum useful cooling COP declines from
+23.423 at zero external lift to 1.835 at 10 K, 0.697 at 20 K, and 0.195 at
+30 K. The maximizing current moves from 0.15 A to the 1.5 A bound as lift
+increases. At equal 3 W cooling, explicit contacts lower COP by 35.14% at 0 K,
+20.73% at 10 K, and 19.30% at 20 K relative to the reduced topology. The 3 W
+target is infeasible at 30 K under the current limit.
+
+Run the map and report with:
+
+```bash
+python3 -m thermotwin.cop_operating_map
+python3 -m thermotwin.cop_operating_map_report
+```
+
+The complete definitions, settings, tables, and limitations are in
+[`COP_OPERATING_MAP_EXPERIMENT.md`](COP_OPERATING_MAP_EXPERIMENT.md).
+
+#### 14.3.2 Seconds-scale pulse overlay
+
+The original fair pulse sweep is now plotted on the zero-external-lift steady
+COP envelope. The 360 s warm-up continuous points agree with the exact steady
+map within 0.04%. The optimized 10 s, 75% duty pulse winners remain below the
+envelope: their COP is 21.82%, 24.18%, and 27.64% lower at matched 2, 5, and
+8 W delivered cooling.
+
+For a zero-to-peak rectangular pulse,
+
+$$
+I_{\mathrm{mean}}=D I_{\mathrm{peak}},
+\qquad
+I_{\mathrm{rms}}=\sqrt{D} I_{\mathrm{peak}}.
+$$
+
+Displaying both statistics makes the physical penalty visible: Peltier heat
+is linear in current, while Joule heat follows RMS current squared. The
+storage-drift check remains below 0.013 W, so an unfinished transient is not
+being counted as cooling.
+
+Run the connected study with:
+
+```bash
+python3 -m thermotwin.pulse_operating_map_report
+```
+
+See
+[`PULSE_OPERATING_MAP_EXPERIMENT.md`](PULSE_OPERATING_MAP_EXPERIMENT.md).
+
+#### 14.3.3 Averaged PWM and wall-plug power
+
+High-frequency electrical PWM is not simulated by shortening the thermal RK4
+step. Instead, the thermoelectric heat equations retain the waveform moments
+they require:
+
+$$
+\overline Q_c
+=\alpha T_c\overline I
+-\frac{1}{2}R\overline{I^2}
+-K(T_h-T_c),
+$$
+
+$$
+\overline Q_h
+=\alpha T_h\overline I
++\frac{1}{2}R\overline{I^2}
+-K(T_h-T_c).
+$$
+
+Direct zero-to-peak PWM has
+$\overline{I^2}/\overline I^2=1/D$. Smoothed current with triangular
+peak-to-peak ripple fraction $r$ has multiplier $1+r^2/12$. Thus, at 0.60 A
+mean with a fixed 1.50 A direct peak, direct PWM produces 2.5 times the DC
+Joule heat. The frozen 10% smoothed-ripple case produces only 1.0008 times.
+
+PWM-derived supply power is
+
+$$
+P_{\mathrm{supply}}
+=P_{\mathrm{module}}/\eta+P_{\mathrm{fixed}},
+$$
+
+so the report retains module COP and wall-plug COP separately. At 10 K lift
+and 0.60 A mean, ideal DC delivers 1.950 W at cooling COP 1.757; the smoothed
+case delivers the same module cooling at wall COP 1.600; direct PWM delivers
+1.459 W at wall COP 0.620.
+
+This is an averaged interface for later converter detail, not a complete
+power-electronics circuit. Efficiency, fixed loss, and ripple are prescribed;
+switching frequency, inductance, voltage, dead time, thermal limits, and a
+current-control loop remain future work.
+
+Run:
+
+```bash
+python3 -m thermotwin.pwm_power_electronics_report
+```
+
+See
+[`PWM_POWER_ELECTRONICS_EXPERIMENT.md`](PWM_POWER_ELECTRONICS_EXPERIMENT.md).
+
+The three corresponding physics-and-code exercise sheets are
+[`notes/19_cop_operating_map.md`](notes/19_cop_operating_map.md),
+[`notes/20_pulse_operating_envelope.md`](notes/20_pulse_operating_envelope.md),
+and [`notes/21_pwm_power_electronics.md`](notes/21_pwm_power_electronics.md).
+
 ---
 
 ## 15. Current package structure
@@ -3703,6 +3892,12 @@ thermotwin/
 ├── contact_experiments.py
 ├── contact_report.py
 ├── control_comparison.py
+├── cop_operating_map.py
+├── cop_operating_map_report.py
+├── pulse_operating_map.py
+├── pulse_operating_map_report.py
+├── pwm_power_electronics.py
+├── pwm_power_electronics_report.py
 ├── sparse_sensor_inference.py
 ├── experiment_selection.py
 ├── assembly_fingerprint.py
@@ -3742,6 +3937,9 @@ thermotwin/
 ├── PINN_SHOWCASE.md
 ├── SPARSE_SENSOR_EXPERIMENT.md
 ├── CONTROL_COMPARISON_EXPERIMENT.md
+├── COP_OPERATING_MAP_EXPERIMENT.md
+├── PULSE_OPERATING_MAP_EXPERIMENT.md
+├── PWM_POWER_ELECTRONICS_EXPERIMENT.md
 ├── NEXT_EXPERIMENT_WALKTHROUGH.md
 ├── ASSEMBLY_FINGERPRINT_EXPERIMENT.md
 ├── HARDWARE_VALIDATION_PROTOCOL.md
@@ -3759,6 +3957,12 @@ tests/
 ├── test_contact_experiments.py
 ├── test_contact_report.py
 ├── test_control_comparison.py
+├── test_cop_operating_map.py
+├── test_cop_operating_map_report.py
+├── test_pulse_operating_map.py
+├── test_pulse_operating_map_report.py
+├── test_pwm_power_electronics.py
+├── test_pwm_power_electronics_report.py
 ├── test_sparse_sensor_inference.py
 ├── test_experiment_selection.py
 ├── test_assembly_fingerprint.py
@@ -3834,11 +4038,15 @@ The planned learning and implementation sequence is:
     negative pulse result, and uncertainty stress test.
 15. Preserve the constrained experiment ranking, repeated-noise check, and
     standardized synthetic assembly fingerprint.
-16. Extend the local experiment-selection validation to complete nonlinear
+16. Preserve the steady cooling/heating operating map, equal-load contact
+    comparison, pulse-envelope overlay, and averaged PWM current-moment tests.
+17. Calibrate a converter loss/ripple model only after its electrical topology
+    or measured efficiency map is defined.
+18. Extend the local experiment-selection validation to complete nonlinear
     repeated fits and additional uncertain physical parameters.
-17. Compare physics-informed and observation-only learning on identical
+19. Compare physics-informed and observation-only learning on identical
     imperfect accessible-sensor datasets.
-18. Validate against hardware only after the documented measurement
+20. Validate against hardware only after the documented measurement
     definitions, safety limits, sensor locations, and fluid interfaces are
     agreed.
 

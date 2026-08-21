@@ -3,10 +3,12 @@
 from .controls import PiecewiseConstantCurrent
 
 from .contact_transient import (
+    FourNodeContactSteadyState,
     FourNodeContactTemperatureRates,
     FourNodeContactTemperatureTrajectory,
     FourNodeContactThermalParameters,
     four_node_contact_rhs,
+    four_node_contact_steady_state,
     integrate_four_node_contact,
     thermal_contact_heat,
 )
@@ -40,6 +42,7 @@ from .thermoelectric import (
     conductive_heat_leak,
     electrical_power,
     hot_side_heat,
+    heating_coefficient_of_performance,
     joule_heating,
     peltier_heat,
     voltage,
@@ -128,6 +131,7 @@ __all__ = [
     "CurrentScheduleMetadata",
     "DatasetProvenance",
     "FourNodeContactExperiment",
+    "FourNodeContactSteadyState",
     "FourNodeContactTemperatureRates",
     "FourNodeContactTemperatureTrajectory",
     "FourNodeContactThermalParameters",
@@ -173,7 +177,9 @@ __all__ = [
     "evaluate_trajectory",
     "evaluate_contact_trajectory",
     "four_node_contact_rhs",
+    "four_node_contact_steady_state",
     "hot_side_heat",
+    "heating_coefficient_of_performance",
     "integrate_four_node_contact",
     "integrate_two_node",
     "ideal_four_sensor_test_stand",

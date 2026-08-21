@@ -151,3 +151,28 @@ def coefficient_of_performance(
     return cold_side_heat(
         parameters, current, hot_temperature, cold_temperature
     ) / power
+
+
+def heating_coefficient_of_performance(
+    parameters: ThermoelectricParameters,
+    current: float,
+    hot_temperature: float,
+    cold_temperature: float,
+) -> float:
+    """Return heating COP = Q_h / (V * I).
+
+    Heating COP is physically meaningful only when heat is delivered to the
+    hot side and terminal electrical input is positive. At zero electrical
+    power the ratio is undefined and this function raises ``ZeroDivisionError``.
+    """
+
+    power = electrical_power(
+        parameters, current, hot_temperature, cold_temperature
+    )
+    if power == 0:
+        raise ZeroDivisionError(
+            "heating COP is undefined at zero electrical power"
+        )
+    return hot_side_heat(
+        parameters, current, hot_temperature, cold_temperature
+    ) / power
