@@ -49,6 +49,7 @@ Complete the table without copying the walkthrough.
 | --- | --- | --- |
 | sample 9107 Seebeck coefficient |  |  |
 | $ZT=S^2\sigma T/k$ |  |  |
+| $2.0\times10^{-10}$ ohm m2 electrical-interface resistivity |  |  |
 | 0.04 W/K package parasitic conductance |  |  |
 | 0.95 converter efficiency |  |  |
 | 0.10--0.50 K/W contact range |  |  |
@@ -110,16 +111,19 @@ Use samples 9107 and 10562 with:
 - $N=83$;
 - $L=1.0791687$ mm;
 - $A=0.8454635$ mm2;
-- electrical multiplier 1.05;
+- per-interface specific electrical contact resistivity
+  $\rho_c=2.0\times10^{-10}$ ohm m2;
 - package parasitic conductance 0.04 W/K.
 
 Calculate by hand, showing unit conversions:
 
 1. $\alpha$ in V/K;
 2. leg-only electrical resistance in ohms;
-3. final electrical resistance after the 1.05 multiplier;
-4. leg-only thermal conductance in W/K;
-5. final thermal conductance after the package parasitic.
+3. the resistance of four electrical interfaces per couple using
+   $R_{\mathrm{contact}}=4N\rho_c/A$;
+4. total electrical resistance;
+5. leg-only thermal conductance in W/K;
+6. final thermal conductance after the package parasitic.
 
 Then compare with the implemented values. Record the difference and decide
 whether it is arithmetic rounding or a code/physics discrepancy.
@@ -128,19 +132,40 @@ whether it is arithmetic rounding or a code/physics discrepancy.
 
 Before evaluating any code, fill in each multiplier.
 
-| Change | $\alpha$ multiplier | $R$ multiplier | leg $K$ multiplier | active volume multiplier |
-| --- | ---: | ---: | ---: | ---: |
-| double $N$ |  |  |  |  |
-| double $L$ |  |  |  |  |
-| double $A$ |  |  |  |  |
-| double $\sigma_p$ only |  |  |  |  |
-| halve $k_n$ only |  |  |  |  |
+| Change | $\alpha$ multiplier | bulk $R$ multiplier | electrical-contact $R$ multiplier | leg $K$ multiplier | active volume multiplier |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| double $N$ |  |  |  |  |  |
+| double $L$ |  |  |  |  |  |
+| double $A$ |  |  |  |  |  |
+| double $\sigma_p$ only |  |  |  |  |  |
+| halve $k_n$ only |  |  |  |  |  |
 
 Check the first three predictions against `ModuleScalingTests`. Explain why a
 fixed 0.04 W/K package leak prevents total $K$ from scaling exactly even when
-leg $K$ does.
+leg $K$ does. Explain why doubling leg length changes bulk resistance but
+leaves an areal interface resistance unchanged.
 
-### Exercise 2.4: thickness is not a one-direction benefit
+### Exercise 2.4: why an areal contact term matters
+
+Compare these two models:
+
+$$
+R_{\mathrm{old}}=1.05R_{\mathrm{legs}},
+\qquad
+R_{\mathrm{new}}=R_{\mathrm{legs}}+4N\rho_c/A.
+$$
+
+1. For fixed $N$ and $A$, derive the contact fraction as a function of $L$ in
+   each model.
+2. Which model predicts the same 5% contact fraction at every leg length?
+3. Why does that behavior incorrectly favor short legs during geometry
+   optimization?
+4. Identify the class field that stores $\rho_c$ and the helper that reports
+   bulk, contact, and total resistance separately.
+5. Explain why the default $\rho_c$ is still an engineering assumption even
+   though its order of magnitude is anchored to a published measurement.
+
+### Exercise 2.5: thickness is not a one-direction benefit
 
 Write a short explanation of this statement:
 
@@ -253,10 +278,23 @@ Then inspect the selected 10 K operating points:
 
 | Objective | Mean current | Cooling | Wall COP |
 | --- | ---: | ---: | ---: |
-| efficiency-first | 0.494 A | 2.520 W | 2.820 |
-| capacity-first | 0.805 A | 4.650 W | 2.175 |
+| efficiency-first | 0.494 A | 2.524 W | 2.856 |
+| capacity-first | 0.805 A | 4.662 W | 2.207 |
 
 Explain whether the result agrees with the prediction.
+
+### Exercise 4.4: identify a binding constraint
+
+The high-lift and capacity-first winners both report 100.00% current-density
+utilization. The efficiency-first winner reports 61.30%.
+
+1. Write the formula for peak current density used by the code.
+2. Calculate the exact allowed mean current for triangular 10% ripple using
+   the unrounded areas of the two selected designs.
+3. Why can the printed 2.111 A appear slightly larger than its 2.11059 A cap?
+4. Why must a result at 100% utilization be described as a constrained
+   boundary solution rather than an unconstrained optimum?
+5. Locate the field and threshold used to label a point as binding.
 
 ---
 
@@ -346,7 +384,7 @@ optimizer input?
 
 ### Exercise 6.5: interpret the curves
 
-The 25 K utility changes from 3.6993 to 6.2354.
+The 25 K utility changes from 3.9015 to 6.4268.
 
 1. Calculate the percentage improvement.
 2. At which additional prototype does BO reach the pool optimum in the figure?
@@ -376,14 +414,14 @@ evaluates the second afterward.
 
 ### Exercise 7.2: the fragile efficiency winner
 
-The nominal efficiency-first point delivers 2.520 W and the requirement is
-2.5 W. Its Monte Carlo pass rate is 58.3%.
+The nominal efficiency-first point delivers 2.524 W and the requirement is
+2.5 W. Its Monte Carlo pass rate is 55.3%.
 
 1. Calculate its nominal cooling margin in watts and percent.
 2. Explain why its 5th-percentile COP can remain strong while the design fails
    the application requirement.
 3. Which requirement is most likely causing failure?
-4. Is 58.3% a measured manufacturing yield? Explain precisely.
+4. Is 55.3% a measured manufacturing yield? Explain precisely.
 5. Propose a chance constraint that would prevent this selection.
 
 ### Exercise 7.3: fixed current versus re-optimized current
@@ -404,7 +442,8 @@ in for and one reason its current numerical width could be wrong.
 | Seebeck |  |  |
 | electrical conductivity |  |  |
 | thermal conductivity |  |  |
-| contact resistance |  |  |
+| specific electrical contact resistivity |  |  |
+| thermal contact resistance |  |  |
 | exchanger conductance |  |  |
 | converter efficiency |  |  |
 
@@ -419,7 +458,8 @@ For each claim, find the exact test method and explain what failure would mean.
 | Claim | Test method | Consequence of failure |
 | --- | --- | --- |
 | p and n Seebeck signs are correct |  |  |
-| double $L$ doubles $R$ and halves leg $K$ |  |  |
+| double $L$ doubles bulk $R$, leaves contact $R$ unchanged, and halves leg $K$ |  |  |
+| selected current-density constraints are flagged as binding |  |  |
 | every Latin-hypercube stratum is used |  |  |
 | BO never selects the same candidate twice |  |  |
 | best-so-far utility never decreases |  |  |

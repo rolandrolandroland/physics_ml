@@ -3929,15 +3929,21 @@ from one sample row. ThermoTwin never creates a fictitious material by mixing
 the best value from different samples.
 
 For an equal-area p/n couple repeated $N$ times, the material-to-module mapping
-is
+separates bulk legs from their metal/thermoelectric interfaces:
 
 $$
 \alpha=N(S_p-S_n),
 $$
 
 $$
-R=1.05N\frac{L}{A}
+R_{\mathrm{legs}}=N\frac{L}{A}
 \left(\frac{1}{\sigma_p}+\frac{1}{\sigma_n}\right),
+\qquad
+R_{\mathrm{contact}}=4N\frac{\rho_c}{A},
+$$
+
+$$
+R=R_{\mathrm{legs}}+R_{\mathrm{contact}},
 $$
 
 and
@@ -3946,13 +3952,19 @@ $$
 K=N\frac{A}{L}(k_p+k_n)+0.04\ \mathrm{W/K}.
 $$
 
-The 5% electrical multiplier and 0.04 W/K package leak are explicit assembly
-assumptions. Geometry spans 80--160 couples, 0.8--2.4 mm leg length, and
-0.8--2.4 mm2 leg area. Symmetric contact resistance, cold exchanger
-conductance, and hot exchanger conductance are also design variables. The
-existing four-node steady balances and smoothed-PWM current moments then
-calculate delivered cooling, terminal power, wall power, COP, heat flux,
-current density, and peak voltage.
+The baseline uses
+$\rho_c=2.0\times10^{-10}\ \mathrm{ohm\,m^2}$ per interface and four
+interfaces per p/n couple. This is a transparent synthetic assembly baseline,
+anchored to a same-order 298 K Ti/Bi2Te3 transfer-length measurement, not a
+fitted property of the selected material rows or a manufactured module. The
+areal term is independent of leg length, so it does not create the old
+geometry-dependent bias of a fixed percentage multiplier. The 0.04 W/K
+package leak is a separate assembly assumption. Geometry spans 80--160
+couples, 0.8--2.4 mm leg length, and 0.8--2.4 mm2 leg area. Symmetric thermal
+contact resistance, cold exchanger conductance, and hot exchanger conductance
+are also design variables. The existing four-node steady balances and
+smoothed-PWM current moments then calculate delivered cooling, terminal power,
+wall power, COP, heat flux, current density, and peak voltage.
 
 Because the public snapshot does not contain manufacturing prices, the
 campaign uses a stated relative build-burden index based on active volume,
@@ -3984,24 +3996,34 @@ winner for both 10 K objectives, so their BO and random best-so-far curves stay
 flat. This is an honest saturation result, not an omitted optimization run.
 
 For the 25 K balanced specification, BO reaches the tested pool optimum after
-six additional prototypes. Utility increases from 3.6993 to 6.2354, about
-68.6%, while the 25-run random-search median remains 3.6993 after the same
+five additional prototypes. Utility increases from 3.9015 to 6.4268, about
+64.7%, while the 25-run random-search median remains 3.9015 after the same
 budget. The selected design uses StarryData samples 10561 and 10562, 98
 couples, 1.179 mm length, 2.216 mm2 area, and 2.111 A mean current. It delivers
-8.253 W at wall COP 0.863 with cost index 1.142 in the virtual model.
+8.317 W at wall COP 0.882 with cost index 1.142 in the virtual model.
 
 The selected 10 K hardware uses samples 9107 and 10562, 83 couples, 1.079 mm
 length, and 0.845 mm2 area. Efficiency-first operation uses 0.494 A and
-delivers 2.520 W at wall COP 2.820. Capacity-first operation uses the same
-hardware at 0.805 A and delivers 4.650 W at wall COP 2.175. This demonstrates
+delivers 2.524 W at wall COP 2.856. Capacity-first operation uses the same
+hardware at 0.805 A and delivers 4.662 W at wall COP 2.207. This demonstrates
 that product geometry and controller setpoint must be selected together.
 
+The report exposes constraint activity instead of listing limits only as
+inputs. The selected 25 K balanced and 10 K capacity-first operating points
+are both exactly at the 1.0 A/mm2 peak current-density limit, so their cooling
+and objective values are constrained boundary results. The efficiency-first
+point uses 61.3% of that limit. Its electrical contact contribution is 0.0785
+ohm, or 3.3% of total module resistance; the high-lift design's is 0.0354 ohm,
+or 2.6%.
+
 The fixed-current uncertainty study is the most important commercialization
-warning. The high-lift and capacity selections pass 100.0% and 99.7% of the
-300 frozen trials, respectively. The nominal efficiency winner passes only
-58.3% because it sits just 0.020 W above its 2.5 W cooling requirement. A
-future robust or chance-constrained optimizer should include requirement pass
-probability during selection rather than checking it only afterward.
+warning. The high-lift and capacity selections both pass 100.0% of the 300
+frozen trials. The nominal efficiency winner passes only 55.3% because it sits
+just 0.024 W above its 2.5 W cooling requirement. The trials now perturb
+specific electrical contact resistivity as well as material, thermal-contact,
+exchanger, and converter quantities. A future robust or chance-constrained
+optimizer should include requirement pass probability during selection rather
+than checking it only afterward.
 
 The complete provenance, equations, ranges, objective definitions, numerical
 results, and limitations are in

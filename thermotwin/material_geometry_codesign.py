@@ -14,7 +14,7 @@ and manufacturing uncertainty are explicit virtual-study assumptions.  The
 result is therefore a method demonstration, not a hardware design release.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import math
 import random
 from typing import NamedTuple, Optional, Sequence, Tuple
@@ -37,6 +37,9 @@ from .pwm_power_electronics import (
 )
 from .small_matrix import inverse_and_determinant
 from .thermoelectric import ThermoelectricParameters
+
+
+CURRENT_DENSITY_BINDING_UTILIZATION = 0.995
 
 
 @dataclass(frozen=True)
@@ -80,7 +83,7 @@ class ModuleGeometry:
 class ModuleAssemblyAssumptions:
     """Documented non-material contributions used in the virtual campaign."""
 
-    electrical_resistance_multiplier: float = 1.05
+    specific_electrical_contact_resistivity: float = 2.0e-10
     parasitic_thermal_conductance: float = 0.04
     pwm_ripple_peak_to_peak_fraction: float = 0.10
     converter_efficiency: float = 0.95
@@ -90,16 +93,17 @@ class ModuleAssemblyAssumptions:
 
     def __post_init__(self) -> None:
         positive = (
-            ("electrical resistance multiplier", self.electrical_resistance_multiplier),
             ("maximum current density", self.maximum_current_density),
             ("maximum peak voltage", self.maximum_peak_voltage),
         )
         for name, value in positive:
             if not math.isfinite(value) or value <= 0.0:
                 raise ValueError(f"{name} must be finite and positive")
-        if self.electrical_resistance_multiplier < 1.0:
-            raise ValueError("electrical resistance multiplier cannot be below one")
         nonnegative = (
+            (
+                "specific electrical contact resistivity",
+                self.specific_electrical_contact_resistivity,
+            ),
             ("parasitic thermal conductance", self.parasitic_thermal_conductance),
             ("PWM ripple fraction", self.pwm_ripple_peak_to_peak_fraction),
             ("fixed converter loss", self.fixed_converter_loss),
@@ -242,6 +246,8 @@ class DesignOperatingPoint(NamedTuple):
     design: PrototypeDesign
     application: ApplicationSpecification
     thermoelectric_parameters: ThermoelectricParameters
+    bulk_leg_electrical_resistance: float
+    electrical_contact_resistance: float
     mean_current: float
     peak_current: float
     cold_face_temperature: float
@@ -256,6 +262,9 @@ class DesignOperatingPoint(NamedTuple):
     heat_flux: float
     prototype_cost_index: float
     peak_voltage: float
+    peak_current_density: float
+    current_density_utilization: float
+    current_density_constraint_binding: bool
     feasible: bool
     utility: float
 
@@ -298,6 +307,7 @@ class CodesignCampaignConfig:
     robustness_trials: int = 300
     seed: int = 20260821
     current_grid_size: int = 28
+    assembly: ModuleAssemblyAssumptions = ModuleAssemblyAssumptions()
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -323,6 +333,68 @@ class CodesignCampaignResult(NamedTuple):
     robustness_results: Tuple[RobustnessResult, ...]
 
 
+class ModuleElectricalResistanceComponents(NamedTuple):
+    """Bulk-leg and areal-contact contributions to module resistance."""
+
+    bulk_leg_resistance: float
+    electrical_contact_resistance: float
+    total_resistance: float
+    contact_fraction: float
+
+
+def module_electrical_resistance_components(
+    p_material: MaterialSample,
+    n_material: MaterialSample,
+    geometry: ModuleGeometry,
+    *,
+    assembly: ModuleAssemblyAssumptions = ModuleAssemblyAssumptions(),
+    multipliers: PropertyMultipliers = PropertyMultipliers(),
+) -> ModuleElectricalResistanceComponents:
+    """Return bulk and metal/thermoelectric interface resistance.
+
+    Each p and n leg has two metal/thermoelectric interfaces. With one
+    symmetric specific contact resistivity ``rho_c`` per interface, the four
+    interfaces in each series p/n couple contribute ``4*rho_c/A``. Repeating
+    ``N`` couples in electrical series gives ``4*N*rho_c/A``. Unlike bulk leg
+    resistance, this areal contact term is independent of leg length.
+    """
+
+    if p_material.carrier_type != "p" or n_material.carrier_type != "n":
+        raise ValueError("module requires one p-type and one n-type material")
+    p_resistivity = 1.0 / (
+        p_material.electrical_conductivity
+        * multipliers.p_electrical_conductivity
+    )
+    n_resistivity = 1.0 / (
+        n_material.electrical_conductivity
+        * multipliers.n_electrical_conductivity
+    )
+    bulk_leg_resistance = (
+        geometry.couple_count
+        * geometry.leg_length
+        / geometry.leg_area
+        * (p_resistivity + n_resistivity)
+    )
+    electrical_contact_resistance = (
+        4.0
+        * geometry.couple_count
+        * assembly.specific_electrical_contact_resistivity
+        / geometry.leg_area
+    )
+    total_resistance = bulk_leg_resistance + electrical_contact_resistance
+    contact_fraction = (
+        electrical_contact_resistance / total_resistance
+        if total_resistance > 0.0
+        else 0.0
+    )
+    return ModuleElectricalResistanceComponents(
+        bulk_leg_resistance,
+        electrical_contact_resistance,
+        total_resistance,
+        contact_fraction,
+    )
+
+
 def module_thermoelectric_parameters(
     p_material: MaterialSample,
     n_material: MaterialSample,
@@ -337,25 +409,16 @@ def module_thermoelectric_parameters(
     couple.  Couples are then electrically series and thermally parallel.
     """
 
-    if p_material.carrier_type != "p" or n_material.carrier_type != "n":
-        raise ValueError("module requires one p-type and one n-type material")
     alpha_pair = (
         p_material.seebeck_coefficient * multipliers.p_seebeck
         - n_material.seebeck_coefficient * multipliers.n_seebeck
     )
-    p_resistivity = 1.0 / (
-        p_material.electrical_conductivity
-        * multipliers.p_electrical_conductivity
-    )
-    n_resistivity = 1.0 / (
-        n_material.electrical_conductivity
-        * multipliers.n_electrical_conductivity
-    )
-    material_resistance = (
-        geometry.couple_count
-        * geometry.leg_length
-        / geometry.leg_area
-        * (p_resistivity + n_resistivity)
+    resistance = module_electrical_resistance_components(
+        p_material,
+        n_material,
+        geometry,
+        assembly=assembly,
+        multipliers=multipliers,
     )
     leg_conductance = (
         geometry.couple_count
@@ -370,9 +433,7 @@ def module_thermoelectric_parameters(
     )
     return ThermoelectricParameters(
         seebeck_coefficient=geometry.couple_count * alpha_pair,
-        electrical_resistance=(
-            material_resistance * assembly.electrical_resistance_multiplier
-        ),
+        electrical_resistance=resistance.total_resistance,
         thermal_conductance=(
             leg_conductance + assembly.parasitic_thermal_conductance
         ),
@@ -455,6 +516,7 @@ def evaluate_design_current(
     *,
     assembly: ModuleAssemblyAssumptions = ModuleAssemblyAssumptions(),
     multipliers: PropertyMultipliers = PropertyMultipliers(),
+    electrical_contact_resistivity_multiplier: float = 1.0,
     contact_multiplier: float = 1.0,
     cold_exchanger_multiplier: float = 1.0,
     hot_exchanger_multiplier: float = 1.0,
@@ -467,6 +529,7 @@ def evaluate_design_current(
     if any(
         not math.isfinite(value) or value <= 0.0
         for value in (
+            electrical_contact_resistivity_multiplier,
             contact_multiplier,
             cold_exchanger_multiplier,
             hot_exchanger_multiplier,
@@ -480,15 +543,29 @@ def evaluate_design_current(
     )
     if not math.isfinite(efficiency) or not 0.0 < efficiency <= 1.0:
         raise ValueError("converter efficiency must lie in (0, 1]")
+    effective_assembly = replace(
+        assembly,
+        specific_electrical_contact_resistivity=(
+            assembly.specific_electrical_contact_resistivity
+            * electrical_contact_resistivity_multiplier
+        ),
+    )
     current = smoothed_pwm_current_moments(
         mean_current,
-        assembly.pwm_ripple_peak_to_peak_fraction,
+        effective_assembly.pwm_ripple_peak_to_peak_fraction,
+    )
+    resistance = module_electrical_resistance_components(
+        design.p_material,
+        design.n_material,
+        design.geometry,
+        assembly=effective_assembly,
+        multipliers=multipliers,
     )
     parameters = module_thermoelectric_parameters(
         design.p_material,
         design.n_material,
         design.geometry,
-        assembly=assembly,
+        assembly=effective_assembly,
         multipliers=multipliers,
     )
     thermal = FourNodeContactThermalParameters(
@@ -539,7 +616,7 @@ def evaluate_design_current(
         raise RuntimeError("hot-side steady energy balance did not close")
     supply_power = (
         rates.module_electrical_power / efficiency
-        + assembly.fixed_converter_loss
+        + effective_assembly.fixed_converter_loss
     )
     wall_cop = (
         delivered_cooling / supply_power
@@ -553,9 +630,15 @@ def evaluate_design_current(
         parameters.seebeck_coefficient * (state.hot_face - state.cold_face)
         + current.peak_current * parameters.electrical_resistance
     )
+    peak_current_density = current.peak_current / design.geometry.leg_area
+    current_density_utilization = (
+        peak_current_density / effective_assembly.maximum_current_density
+    )
     current_density_ok = (
-        current.peak_current / design.geometry.leg_area
-        <= assembly.maximum_current_density * (1.0 + 1e-12)
+        current_density_utilization <= 1.0 + 1e-12
+    )
+    current_density_binding = (
+        current_density_utilization >= CURRENT_DENSITY_BINDING_UTILIZATION
     )
     feasible, utility = _application_utility(
         application,
@@ -565,21 +648,20 @@ def evaluate_design_current(
         cost_index=cost_index,
         supply_power=supply_power,
         peak_voltage=peak_voltage,
-        maximum_peak_voltage=assembly.maximum_peak_voltage,
+        maximum_peak_voltage=effective_assembly.maximum_peak_voltage,
     )
     if not current_density_ok:
         feasible = False
         excess = (
-            current.peak_current
-            / design.geometry.leg_area
-            / assembly.maximum_current_density
-            - 1.0
+            current_density_utilization - 1.0
         )
         utility = min(utility, -1.0 - excess)
     return DesignOperatingPoint(
         design,
         application,
         parameters,
+        resistance.bulk_leg_resistance,
+        resistance.electrical_contact_resistance,
         current.mean_current,
         current.peak_current,
         state.cold_face,
@@ -594,6 +676,9 @@ def evaluate_design_current(
         heat_flux,
         cost_index,
         peak_voltage,
+        peak_current_density,
+        current_density_utilization,
+        current_density_binding,
         feasible,
         utility,
     )
@@ -814,6 +899,7 @@ def run_bayesian_optimization(
     random_repetitions: int = 25,
     seed: int = 20260821,
     current_grid_size: int = 28,
+    assembly: ModuleAssemblyAssumptions = ModuleAssemblyAssumptions(),
 ) -> BayesianOptimizationResult:
     """Compare cost-aware expected improvement with random candidate order."""
 
@@ -839,6 +925,7 @@ def run_bayesian_optimization(
             design,
             application,
             grid_size=current_grid_size,
+            assembly=assembly,
         )
         for design in initial + candidates
     }
@@ -921,6 +1008,7 @@ def run_robustness_study(
     *,
     trials: int = 300,
     seed: int = 20260821,
+    assembly: ModuleAssemblyAssumptions = ModuleAssemblyAssumptions(),
 ) -> RobustnessResult:
     """Hold current fixed while perturbing material and interface properties."""
 
@@ -943,7 +1031,11 @@ def run_robustness_study(
                 nominal.design,
                 nominal.application,
                 nominal.mean_current,
+                assembly=assembly,
                 multipliers=multipliers,
+                electrical_contact_resistivity_multiplier=(
+                    _lognormal_unit_mean(generator, 0.20)
+                ),
                 contact_multiplier=_lognormal_unit_mean(generator, 0.15),
                 cold_exchanger_multiplier=_lognormal_unit_mean(generator, 0.10),
                 hot_exchanger_multiplier=_lognormal_unit_mean(generator, 0.10),
@@ -992,6 +1084,7 @@ def run_codesign_campaign(
                 design,
                 application,
                 grid_size=config.current_grid_size,
+                assembly=config.assembly,
             )
             for design in initial_designs
         )
@@ -1011,6 +1104,7 @@ def run_codesign_campaign(
             random_repetitions=config.random_search_repetitions,
             seed=config.seed + 100 * application_index,
             current_grid_size=config.current_grid_size,
+            assembly=config.assembly,
         )
         bayesian_results.append(bayesian)
         robustness_results.append(
@@ -1018,6 +1112,7 @@ def run_codesign_campaign(
                 bayesian.selected,
                 trials=config.robustness_trials,
                 seed=config.seed + 10000 * (application_index + 1),
+                assembly=config.assembly,
             )
         )
     return CodesignCampaignResult(
@@ -1033,8 +1128,14 @@ def run_codesign_campaign(
 def format_codesign_campaign_report(result: CodesignCampaignResult) -> str:
     """Return a compact, reproducible plain-text result summary."""
 
+    assembly = result.config.assembly
     lines = [
         "ThermoTwin material/geometry Bayesian co-design campaign",
+        (
+            "specific electrical contact resistivity: "
+            f"{assembly.specific_electrical_contact_resistivity:.2e} ohm m^2 "
+            "per metal/TE interface"
+        ),
         (
             f"budget: {result.config.initial_design_count} initial + "
             f"{result.config.bayesian_iterations} selected prototypes per application"
@@ -1074,6 +1175,19 @@ def format_codesign_campaign_report(result: CodesignCampaignResult) -> str:
                     f"cost index={selected.prototype_cost_index:.3f}"
                 ),
                 (
+                    "  electrical resistance: "
+                    f"bulk={selected.bulk_leg_electrical_resistance:.4f} ohm, "
+                    f"contacts={selected.electrical_contact_resistance:.4f} ohm "
+                    f"({100.0 * selected.electrical_contact_resistance / selected.thermoelectric_parameters.electrical_resistance:.1f}% total)"
+                ),
+                (
+                    "  peak current density: "
+                    f"{selected.peak_current_density / 1.0e6:.4f} A/mm^2, "
+                    f"{100.0 * selected.current_density_utilization:.2f}% of limit, "
+                    "binding="
+                    f"{'yes' if selected.current_density_constraint_binding else 'no'}"
+                ),
+                (
                     f"  utility: initial={bayesian.best_utility_history[0]:.4f}, "
                     f"Bayesian={bayesian.best_utility_history[-1]:.4f}, "
                     f"random median={bayesian.random_median_history[-1]:.4f}, "
@@ -1093,3 +1207,13 @@ def format_codesign_campaign_report(result: CodesignCampaignResult) -> str:
             )
         )
     return "\n".join(lines)
+
+
+def main() -> None:
+    """Run the default CPU-first campaign and print its text report."""
+
+    print(format_codesign_campaign_report(run_codesign_campaign()))
+
+
+if __name__ == "__main__":
+    main()

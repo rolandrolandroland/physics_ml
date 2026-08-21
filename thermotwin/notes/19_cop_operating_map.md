@@ -113,9 +113,12 @@ Use the order $[T_c,T_h,T_{x,c},T_{x,h}]$.
 
 25. Read `_optimal_summary`. Show exactly how a sub-1 W point is excluded.
 
-26. Read `_match_heat_rate`. What monotonicity assumption makes bisection
-    appropriate over the frozen 0–1.5 A interval? Find one physical extension
-    that could make a blind monotonic assumption unsafe.
+26. Read `_match_heat_rate` and `first_rising_crossing_bracket`. Why is testing
+    feasibility only at `maximum_current` unsafe once cooling has a
+    high-current turnover? Explain how the coarse scan locates the first rising
+    target crossing and why bisection is then valid only inside that bracket.
+    Find the regression test whose 12 A endpoint is below a feasible 3 W
+    target.
 
 27. Why does the equal-load comparison solve for different currents instead
     of comparing both topologies at 1 A?

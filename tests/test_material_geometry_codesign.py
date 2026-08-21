@@ -1,9 +1,14 @@
+from contextlib import redirect_stdout
+from io import StringIO
 import math
 import unittest
+from unittest.mock import patch
 
+import thermotwin.material_geometry_codesign as codesign
 from thermotwin.material_geometry_codesign import (
     APPLICATION_SPECIFICATIONS,
     CodesignCampaignConfig,
+    ModuleAssemblyAssumptions,
     design_features,
     evaluate_design_current,
     expected_improvement,
@@ -54,6 +59,15 @@ class OperatingEvaluationTests(unittest.TestCase):
         self.assertGreater(point.supply_electrical_power, point.module_electrical_power)
         self.assertGreater(point.prototype_cost_index, 0.0)
         self.assertGreater(point.peak_current, point.mean_current)
+        self.assertAlmostEqual(
+            point.bulk_leg_electrical_resistance
+            + point.electrical_contact_resistance,
+            point.thermoelectric_parameters.electrical_resistance,
+        )
+        self.assertAlmostEqual(
+            point.current_density_utilization,
+            point.peak_current_density / 1.0e6,
+        )
 
     def test_current_optimizer_returns_a_grid_point_with_maximal_utility(self):
         selected = optimize_design_current(self.design, self.application, grid_size=8)
@@ -68,6 +82,30 @@ class OperatingEvaluationTests(unittest.TestCase):
             for current in currents
         )
         self.assertAlmostEqual(selected.utility, max(point.utility for point in points))
+
+    def test_known_capacity_and_high_lift_winners_bind_current_density(self):
+        initial_capacity = generate_space_filling_designs(
+            24,
+            seed=20260821,
+            prefix="initial",
+        )[-1]
+        high_lift_candidate = generate_space_filling_designs(
+            180,
+            seed=20260822,
+            prefix="candidate",
+        )[115]
+
+        for design, application in (
+            (initial_capacity, APPLICATION_SPECIFICATIONS[2]),
+            (high_lift_candidate, APPLICATION_SPECIFICATIONS[1]),
+        ):
+            with self.subTest(design=design.design_id):
+                selected = optimize_design_current(design, application)
+                self.assertTrue(selected.current_density_constraint_binding)
+                self.assertAlmostEqual(
+                    selected.current_density_utilization,
+                    1.0,
+                )
 
 
 class BayesianOptimizationTests(unittest.TestCase):
@@ -133,6 +171,9 @@ class BayesianOptimizationTests(unittest.TestCase):
             self.assertLessEqual(quantiles[1], quantiles[2])
 
     def test_small_end_to_end_campaign_has_all_three_experiments(self):
+        assembly = ModuleAssemblyAssumptions(
+            specific_electrical_contact_resistivity=0.0
+        )
         config = CodesignCampaignConfig(
             initial_design_count=5,
             candidate_design_count=8,
@@ -140,11 +181,35 @@ class BayesianOptimizationTests(unittest.TestCase):
             random_search_repetitions=3,
             robustness_trials=6,
             current_grid_size=6,
+            assembly=assembly,
         )
         result = run_codesign_campaign(config)
         self.assertEqual(len(result.initial_summaries), 3)
         self.assertEqual(len(result.bayesian_results), 3)
         self.assertEqual(len(result.robustness_results), 3)
+        self.assertTrue(
+            all(
+                item.selected.electrical_contact_resistance == 0.0
+                for item in result.bayesian_results
+            )
+        )
+
+    def test_module_main_prints_campaign_report(self):
+        sentinel = object()
+        output = StringIO()
+        with (
+            patch.object(codesign, "run_codesign_campaign", return_value=sentinel),
+            patch.object(
+                codesign,
+                "format_codesign_campaign_report",
+                return_value="frozen report",
+            ) as formatter,
+            redirect_stdout(output),
+        ):
+            codesign.main()
+
+        formatter.assert_called_once_with(sentinel)
+        self.assertEqual(output.getvalue().strip(), "frozen report")
 
 
 if __name__ == "__main__":

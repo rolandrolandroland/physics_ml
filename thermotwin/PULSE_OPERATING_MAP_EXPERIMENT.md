@@ -60,7 +60,7 @@ $I_{\mathrm{rms}}^2$. For $0<D<1$, RMS current is greater than mean current.
 | ---: | ---: | ---: | --- | --- | ---: | ---: |
 | 2 W | 0.2231 A | 15.6014 | 0.2255 / 0.2232 / 0.2244 A | 10 s, 99% | 15.4675 | -0.86% |
 | 5 W | 0.5866 A | 5.6543 | 0.5928 / 0.5869 / 0.5898 A | 10 s, 99% | 5.6036 | -0.90% |
-| 8 W | 0.9945 A | 3.1518 | 1.0059 / 0.9958 / 1.0009 A | 10 s, 99% | 3.1191 | -1.04% |
+| 8 W | 0.9945 A | 3.1518 | 1.0059 / 0.9958 / 1.0008 A | 10 s, 99% | 3.1191 | -1.04% |
 
 The continuous transient COP differs from the exact steady-map COP by only
 0.021%, 0.029%, and 0.040%. The continuous markers can therefore be treated as

@@ -4,6 +4,7 @@ from dataclasses import dataclass, replace
 import math
 from typing import NamedTuple, Optional, Sequence, Tuple
 
+from .control_comparison import first_rising_crossing_bracket
 from .contact_experiments import constant_current_contact_reference_experiment
 from .contact_transient import four_node_contact_steady_state
 from .experiments import constant_current_reference_experiment
@@ -38,6 +39,7 @@ class COPOperatingMapConfig:
     equal_heating_target: float = 5.0
     maximum_current: float = 1.5
     current_tolerance: float = 1e-7
+    heat_rate_bracket_subdivisions: int = 64
 
     def __post_init__(self) -> None:
         if (
@@ -78,6 +80,12 @@ class COPOperatingMapConfig:
                 raise ValueError(f"{name} must be finite and positive")
         if self.currents[-1] > self.maximum_current:
             raise ValueError("current grid exceeds the maximum current")
+        if (
+            isinstance(self.heat_rate_bracket_subdivisions, bool)
+            or not isinstance(self.heat_rate_bracket_subdivisions, int)
+            or self.heat_rate_bracket_subdivisions < 2
+        ):
+            raise ValueError("heat-rate bracket subdivisions must be at least two")
 
 
 class SteadyOperatingPoint(NamedTuple):
@@ -392,25 +400,42 @@ def _match_heat_rate(
     heat_field = (
         "delivered_cooling_rate" if mode == "cooling" else "delivered_heating_rate"
     )
-    lower = 1e-9
-    upper = config.maximum_current
-    upper_point = _point_for_topology(
-        topology, upper, lift, resistance, config
-    )
-    if getattr(upper_point, heat_field) < target:
+    evaluated = {}
+
+    def point_at(current: float) -> SteadyOperatingPoint:
+        if current not in evaluated:
+            evaluated[current] = _point_for_topology(
+                topology,
+                current,
+                lift,
+                resistance,
+                config,
+            )
+        return evaluated[current]
+
+    upper_point = point_at(config.maximum_current)
+    if getattr(upper_point, heat_field) >= target:
+        bracket = (0.0, config.maximum_current)
+    else:
+        bracket = first_rising_crossing_bracket(
+            lambda current: getattr(point_at(current), heat_field),
+            target=target,
+            maximum_input=config.maximum_current,
+            subdivisions=config.heat_rate_bracket_subdivisions,
+        )
+    if bracket is None:
         return None
+    lower, upper = bracket
+    if lower == upper:
+        return point_at(upper)
     while upper - lower > config.current_tolerance:
         candidate = 0.5 * (lower + upper)
-        point = _point_for_topology(
-            topology, candidate, lift, resistance, config
-        )
+        point = point_at(candidate)
         if getattr(point, heat_field) < target:
             lower = candidate
         else:
             upper = candidate
-    return _point_for_topology(
-        topology, 0.5 * (lower + upper), lift, resistance, config
-    )
+    return point_at(0.5 * (lower + upper))
 
 
 def _equal_load_comparison(

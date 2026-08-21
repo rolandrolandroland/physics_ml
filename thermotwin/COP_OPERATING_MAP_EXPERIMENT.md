@@ -151,6 +151,13 @@ load. At the baseline 0.25 K/W resistance, the 3 W cooling result is:
 At 25 K, the 0.50 K/W case is already unable to deliver 3 W below 1.5 A. At
 30 K, none of the explicit-contact cases reaches that target.
 
+The equal-load matcher does not assume that cooling remains monotonic all the
+way to the configured current ceiling. If the ceiling itself is below the
+target, it scans the interval for the first below-to-above target crossing and
+then bisects that rising branch. This still finds a feasible low-current
+solution when excessive current has already pushed the endpoint past the
+cooling maximum and back below the target.
+
 For the 5 W heating comparison, the baseline contact COP penalty decreases
 from 30.02% at 0 K to 4.68% at 30 K. This does not mean contacts become
 unimportant. As useful heating becomes increasingly dominated by electrical

@@ -122,32 +122,50 @@ $$
 $$
 
 $$
-R_{mathrm{legs}}
+R_{\mathrm{legs}}
 =N\frac{L}{A}\left(\frac{1}{\sigma_p}+\frac{1}{\sigma_n}\right),
 $$
 
 and
 
 $$
-K_{mathrm{legs}}
+K_{\mathrm{legs}}
 =N\frac{A}{L}(k_p+k_n).
 $$
 
-The virtual assembly then applies two stated non-material assumptions:
+The virtual assembly then applies two stated non-material assumptions. Bulk
+leg resistance and electrical-interface resistance are separated:
 
 $$
-R=1.05R_{mathrm{legs}},
+R_{\mathrm{contact}}
+=4N\frac{\rho_c}{A},
+$$
+
+$$
+R=R_{\mathrm{legs}}+R_{\mathrm{contact}},
 \qquad
-K=K_{mathrm{legs}}+0.04\ \mathrm{W/K}.
+K=K_{\mathrm{legs}}+0.04\ \mathrm{W/K}.
 $$
 
-The 5% multiplier represents unresolved interconnect/electrical-contact
-resistance. The fixed 0.04 W/K represents package parasitic conduction. These
-are generic study settings, not fitted manufacturing data.
+Each p and n leg has two metal/thermoelectric interfaces, giving four
+interfaces per series p/n couple. The baseline uses one symmetric per-interface
+specific contact resistivity
+$\rho_c=2.0\times10^{-10}\ \mathrm{ohm\,m^2}$. That order of magnitude is
+anchored to a 298 K Ti/Bi2Te3 measurement of
+$1.94\times10^{-10}\ \mathrm{ohm\,m^2}$ in a transfer-length study
+([AIP Advances 15, 035351](https://doi.org/10.1063/5.0253218)). ThermoTwin's
+exact value is still a synthetic baseline, not a fitted property of the
+curated StarryData samples or a manufactured module.
+
+The contact term scales with $N/A$ and is independent of leg length. It
+therefore penalizes short legs more strongly as a fraction of total electrical
+resistance instead of hiding contact loss inside a constant multiplier. The
+fixed 0.04 W/K term represents package parasitic conduction. Metal trace and
+solder-bulk resistance are not separately modeled.
 
 The equations make the geometry trade-off explicit:
 
-- increasing $L$ increases $R$ and decreases $K$;
+- increasing $L$ increases only the bulk part of $R$ and decreases $K$;
 - increasing $A$ decreases $R$ and increases $K$;
 - increasing $N$ increases $\alpha$, $R$, and $K$ together;
 - active volume is $2NAL$;
@@ -198,13 +216,15 @@ The converter assumptions are efficiency $\eta=0.95$ and fixed loss
 $P_{0}=0.05$ W:
 
 $$
-P_{mathrm{supply}}=\frac{P_{mathrm{module}}}{\eta}+P_0,
+P_{\mathrm{supply}}=\frac{P_{\mathrm{module}}}{\eta}+P_0,
 \qquad
-\mathrm{COP}_{\mathrm{wall}}=\frac{Q_{c,\mathrm{del}}}{P_{mathrm{supply}}}.
+\mathrm{COP}_{\mathrm{wall}}=\frac{Q_{c,\mathrm{del}}}{P_{\mathrm{supply}}}.
 $$
 
 The current scan obeys a 1.0 A/mm2 peak current-density bound and a 12 V peak
 module-voltage bound. Each application also has its own supply-power limit.
+The report records current-density utilization explicitly and marks a
+constraint as binding at 99.5% utilization or above.
 
 ## 5. Design variables and synthetic cost
 
@@ -225,7 +245,7 @@ There are no dollar cost data in the public material snapshot. ThermoTwin
 therefore reports a relative prototype build-burden index:
 
 $$
-C_{mathrm{index}}
+C_{\mathrm{index}}
 =0.40\frac{V}{V_0}
 +0.20\frac{N}{120}
 +0.20\frac{G_c}{2.5}
@@ -256,9 +276,9 @@ scale. It must not be presented as dollars or levelized HVAC cost.
 
 | Application | Feasible initial designs | Best initial utility |
 | --- | ---: | ---: |
-| 10 K efficiency-first | 17/24 | 3.3982 |
-| 25 K balanced | 16/24 | 3.6993 |
-| 10 K capacity-first | 16/24 | 3.8280 |
+| 10 K efficiency-first | 17/24 | 3.4411 |
+| 25 K balanced | 16/24 | 3.9015 |
+| 10 K capacity-first | 16/24 | 3.8654 |
 
 The screen is already strong enough to contain the retrospective pool winner
 for both 10 K objectives. That is not a failed optimizer. It means the initial
@@ -293,11 +313,11 @@ is not shown to the optimizer.
 
 | Application | Initial best | BO final | Random median final | Pool optimum | Interpretation |
 | --- | ---: | ---: | ---: | ---: | --- |
-| 10 K efficiency-first | 3.3982 | 3.3982 | 3.3982 | 3.3982 | initial screen already contained pool winner |
-| 25 K balanced | 3.6993 | 6.2354 | 3.6993 | 6.2354 | BO found pool winner after six additions |
-| 10 K capacity-first | 3.8280 | 3.8280 | 3.8280 | 3.8280 | initial screen already contained pool winner |
+| 10 K efficiency-first | 3.4411 | 3.4411 | 3.4411 | 3.4411 | initial screen already contained pool winner |
+| 25 K balanced | 3.9015 | 6.4268 | 3.9015 | 6.4268 | BO found pool winner after five additions |
+| 10 K capacity-first | 3.8654 | 3.8654 | 3.8654 | 3.8654 | initial screen already contained pool winner |
 
-For the high-lift application, BO improves utility by about 68.6% over the
+For the high-lift application, BO improves utility by about 64.7% over the
 initial best and reaches the pool optimum within the budget. The random median
 does not improve on the initial best. The two flat 10 K curves are retained
 because reporting only the successful high-lift case would overstate the value
@@ -307,17 +327,28 @@ of optimization.
 
 | Application | Design | p/n IDs | $N$ | $L$ (mm) | $A$ (mm2) | Mean current (A) | Cooling (W) | Wall COP | Cost index |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 10 K efficiency | initial-024 | 9107/10562 | 83 | 1.079 | 0.845 | 0.494 | 2.520 | 2.820 | 0.689 |
-| 25 K balanced | candidate-116 | 10561/10562 | 98 | 1.179 | 2.216 | 2.111 | 8.253 | 0.863 | 1.142 |
-| 10 K capacity | initial-024 | 9107/10562 | 83 | 1.079 | 0.845 | 0.805 | 4.650 | 2.175 | 0.689 |
+| 10 K efficiency | initial-024 | 9107/10562 | 83 | 1.079 | 0.845 | 0.494 | 2.524 | 2.856 | 0.689 |
+| 25 K balanced | candidate-116 | 10561/10562 | 98 | 1.179 | 2.216 | 2.111 | 8.317 | 0.882 | 1.142 |
+| 10 K capacity | initial-024 | 9107/10562 | 83 | 1.079 | 0.845 | 0.805 | 4.662 | 2.207 | 0.689 |
 
 The two 10 K objectives select the same hardware but different current. This is
 an important control/design interaction: hardware selection does not by itself
 define operation. The capacity objective drives the module harder, increasing
-cooling from 2.520 W to 4.650 W while reducing wall COP from 2.820 to 2.175.
+cooling from 2.524 W to 4.662 W while reducing wall COP from 2.856 to 2.207.
+
+| Application | Bulk leg $R$ | Electrical-contact $R$ | Contact share | Peak current density | Binding? |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 10 K efficiency | 2.3218 ohm | 0.0785 ohm | 3.3% | 0.6130 A/mm2 | no |
+| 25 K balanced | 1.3030 ohm | 0.0354 ohm | 2.6% | 1.0000 A/mm2 | **yes** |
+| 10 K capacity | 2.3218 ohm | 0.0785 ohm | 3.3% | 1.0000 A/mm2 | **yes** |
+
+The selected mean-current caps computed from the unrounded areas are 2.11059 A
+for the 25 K design and 0.80520 A for the capacity-first design. Their printed
+currents are rounded to 2.111 A and 0.805 A. These points sit exactly at the
+peak current-density constraint; they are not unconstrained interior optima.
 
 The 25 K winner uses a much larger leg area and higher current. Its module
-parameters are approximately $\alpha=0.0418$ V/K, $R=1.368$ ohm, and
+parameters are approximately $\alpha=0.0418$ V/K, $R=1.338$ ohm, and
 $K=0.414$ W/K. That combination supports much higher cooling at the price of
 greater electrical power and active/exchanger burden.
 
@@ -335,6 +366,7 @@ meet the product requirement?
 | p and n Seebeck coefficients | independent normal, 3% standard deviation |
 | p and n electrical conductivities | independent unit-mean lognormal, log standard deviation 0.08 |
 | p and n thermal conductivities | independent unit-mean lognormal, log standard deviation 0.08 |
+| specific electrical contact resistivity | unit-mean lognormal, log standard deviation 0.20 |
 | symmetric contact resistance | unit-mean lognormal, log standard deviation 0.15 |
 | cold and hot exchanger conductances | independent unit-mean lognormal, log standard deviation 0.10 |
 | converter efficiency | normal around 0.95 with 0.01 standard deviation, clipped to 0.85--0.99 |
@@ -346,12 +378,12 @@ process capability distributions.
 
 | Application | Requirement pass rate | Cooling 5/50/95% (W) | Wall COP 5/50/95% |
 | --- | ---: | --- | --- |
-| 10 K efficiency-first | 58.3% | 2.326 / 2.523 / 2.684 | 2.552 / 2.807 / 3.054 |
-| 25 K balanced | 100.0% | 6.996 / 8.202 / 9.435 | 0.709 / 0.853 / 0.992 |
-| 10 K capacity-first | 99.7% | 4.406 / 4.648 / 4.925 | 1.955 / 2.161 / 2.373 |
+| 10 K efficiency-first | 55.3% | 2.326 / 2.515 / 2.699 | 2.507 / 2.849 / 3.132 |
+| 25 K balanced | 100.0% | 7.056 / 8.347 / 9.536 | 0.738 / 0.878 / 1.019 |
+| 10 K capacity-first | 100.0% | 4.388 / 4.643 / 4.945 | 1.985 / 2.189 / 2.472 |
 
-The efficiency-first nominal design is fragile. Its nominal 2.520 W cooling is
-only 0.020 W above the 2.5 W requirement, so ordinary property/interface spread
+The efficiency-first nominal design is fragile. Its nominal 2.524 W cooling is
+only 0.024 W above the 2.5 W requirement, so ordinary property/interface spread
 pushes many trials below the threshold even though COP remains high. A nominal
 optimizer can therefore select a design that looks efficient but is difficult
 to commercialize reliably.

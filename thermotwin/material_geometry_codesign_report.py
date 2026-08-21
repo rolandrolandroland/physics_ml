@@ -124,6 +124,20 @@ def save_material_geometry_codesign_report(
         axis.set_xlabel("Additional virtual prototypes")
         axis.set_ylabel("Best application utility")
         axis.legend(fontsize="x-small")
+        selected = optimization.selected
+        axis.text(
+            0.02,
+            0.04,
+            (
+                f"selected peak J: {selected.peak_current_density / 1.0e6:.3f} A/mm$^2$\n"
+                f"{100.0 * selected.current_density_utilization:.1f}% of limit; "
+                f"binding: {'yes' if selected.current_density_constraint_binding else 'no'}"
+            ),
+            transform=axis.transAxes,
+            fontsize=8,
+            va="bottom",
+            bbox={"facecolor": "white", "alpha": 0.8, "edgecolor": "0.8"},
+        )
 
     labels = tuple(item.application.label.replace(" ", "\n", 1) for item in result.robustness_results)
     x_values = tuple(range(len(labels)))
@@ -193,7 +207,8 @@ def save_material_geometry_codesign_report(
 
     figure.suptitle(
         "ThermoTwin public-data-seeded material/geometry Bayesian co-design\n"
-        "real same-row material records; virtual geometry, cost, interfaces, and uncertainty",
+        "real same-row material records; explicit areal electrical contacts; "
+        "virtual geometry, cost, and uncertainty",
         fontsize=15,
     )
     figure.savefig(destination, dpi=150)

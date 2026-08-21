@@ -516,7 +516,8 @@ requirements in one reproducible design-selection loop.
 - Convert p/n Seebeck coefficient, electrical conductivity, thermal
   conductivity, couple count, leg length, and leg area into module $\alpha$,
   $R$, and $K$.
-- Include explicit contact resistance, exchanger conductance, current moments,
+- Include explicit thermal contact resistance, length-independent areal
+  electrical-interface resistance, exchanger conductance, current moments,
   converter loss, wall COP, current-density limits, and voltage limits.
 - Define application-specific feasibility constraints and scalar objectives.
 - Screen 20--30 initial space-filling designs.
@@ -538,14 +539,16 @@ requirements in one reproducible design-selection loop.
   application specifications.
 - Twenty-five equal-budget random candidate orders provide a repeated
   comparison rather than a favorable single seed.
-- The 25 K balanced case improves application utility from 3.6993 to 6.2354
-  and reaches the tested pool optimum after six BO additions; the random median
-  remains at 3.6993.
+- The 25 K balanced case improves application utility from 3.9015 to 6.4268
+  and reaches the tested pool optimum after five BO additions; the random
+  median remains at 3.9015.
 - Both 10 K initial screens already contain the tested pool winner, so no false
   improvement is claimed.
-- Three 300-trial fixed-current robustness studies show 58.3%, 100.0%, and
-  99.7% requirement pass rates. The fragile efficiency winner demonstrates why
-  nominal COP optimization is not sufficient for commercialization.
+- The report identifies both the 25 K balanced and 10 K capacity-first
+  selections as binding at the 1.0 A/mm2 peak current-density limit.
+- Three 300-trial fixed-current robustness studies show 55.3%, 100.0%, and
+  100.0% requirement pass rates. The fragile efficiency winner demonstrates
+  why nominal COP optimization is not sufficient for commercialization.
 - Walkthrough: `MATERIAL_GEOMETRY_BAYESIAN_CODESIGN.md`.
 - Exercises: `notes/22_material_geometry_bayesian_codesign.md`.
 

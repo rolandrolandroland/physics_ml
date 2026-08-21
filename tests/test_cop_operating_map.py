@@ -2,6 +2,7 @@ import unittest
 
 from thermotwin.cop_operating_map import (
     COPOperatingMapConfig,
+    _match_heat_rate,
     contact_steady_operating_point,
     points_for,
     run_cop_operating_map,
@@ -79,6 +80,25 @@ class COPOperatingMapTests(unittest.TestCase):
         self.assertFalse(comparison.feasible)
         self.assertIsNone(comparison.contact_cop)
 
+    def test_heat_matching_finds_rising_branch_after_endpoint_turnover(self):
+        config = COPOperatingMapConfig(
+            currents=(0.1,),
+            maximum_current=12.0,
+        )
+
+        matched = _match_heat_rate(
+            "reduced_no_explicit_contact",
+            0.0,
+            None,
+            3.0,
+            "cooling",
+            config,
+        )
+
+        self.assertIsNotNone(matched)
+        self.assertAlmostEqual(matched.delivered_cooling_rate, 3.0, places=5)
+        self.assertLess(matched.current, 1.0)
+
     def test_points_for_selects_one_curve(self):
         points = points_for(
             self.result,
@@ -96,6 +116,7 @@ class COPOperatingMapTests(unittest.TestCase):
             ("currents", (0.0,)),
             ("symmetric_contact_resistances", (0.0,)),
             ("minimum_useful_heat_rate", 0.0),
+            ("heat_rate_bracket_subdivisions", 1),
         ):
             with self.subTest(keyword=keyword):
                 with self.assertRaises(ValueError):
