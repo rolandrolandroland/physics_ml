@@ -7,6 +7,37 @@ forward PINN, inverse parameter inference, tests, and current limitations, see
 The governing project sequence, revised milestone definitions, current status,
 and completion criteria are in [`ROADMAP.md`](ROADMAP.md).
 
+## Package architecture and installation
+
+The implementation is organized by responsibility under `core`, `physics`,
+`numerics`, `simulation`, `observations`, `inference`, `pinn`, `design`,
+`studies`, and `reports`. Historical flat imports and every documented
+`python3 -m thermotwin...` command remain supported by compatibility facades.
+The dependency rules and extension guide are in
+[`docs/thermotwin/ARCHITECTURE.md`](../docs/thermotwin/ARCHITECTURE.md).
+
+Install only the dependency-free physics and conventional tools with:
+
+~~~bash
+python3 -m pip install -e .
+~~~
+
+Install the report and PINN extras with:
+
+~~~bash
+python3 -m pip install -e '.[all]'
+~~~
+
+New code can use the layered API directly:
+
+~~~python
+from thermotwin.physics import ThermoelectricParameters, cold_side_heat
+from thermotwin.core.controls import PiecewiseConstantCurrent
+from thermotwin.design.codesign import CodesignCampaignConfig
+~~~
+
+Importing `thermotwin` itself does not load PyTorch or Matplotlib.
+
 ## PINN showcase
 
 For the shortest end-to-end demonstration, see

@@ -97,6 +97,8 @@ There are six documentation layers:
 - [`PINN_SHOWCASE.md`](PINN_SHOWCASE.md) is the focused reproducible case study.
 - [`ROADMAP.md`](ROADMAP.md) defines the complete project sequence and current
   milestone exit criteria.
+- [`../docs/thermotwin/ARCHITECTURE.md`](../docs/thermotwin/ARCHITECTURE.md)
+  defines package layers, dependency direction, and compatibility policy.
 - [`MATERIAL_GEOMETRY_BAYESIAN_CODESIGN.md`](MATERIAL_GEOMETRY_BAYESIAN_CODESIGN.md)
   is the material/geometry/product optimization experiment walkthrough.
 - [`notes/00_index.md`](notes/00_index.md) links to learning exercises,
@@ -121,9 +123,8 @@ standard library. Run all current ThermoTwin tests with:
 python3 -m unittest discover -s tests
 ```
 
-The current suite contains 331 focused tests. Optional learned-model and report
-tests are skipped
-when their optional dependencies are not installed.
+The suite contains more than 360 focused tests. Optional learned-model and
+report tests are skipped when their optional dependencies are not installed.
 
 ### 2.2 Install the optional learned-model dependencies
 
@@ -132,6 +133,20 @@ require Matplotlib:
 
 ```bash
 python3 -m pip install -r thermotwin/requirements-pinn.txt
+```
+
+ThermoTwin is also an installable project. For a dependency-free editable core
+installation, use:
+
+```bash
+python3 -m pip install -e .
+```
+
+For reports and PINNs together, use quotes around the extras specifier so zsh
+does not interpret the brackets:
+
+```bash
+python3 -m pip install -e '.[all]'
 ```
 
 ### 2.3 Run the main workflows
@@ -238,10 +253,11 @@ python3 -m thermotwin.inverse_thermal_conductance
 ```
 
 All report commands write to `thermotwin/figures/` by default. The shared
-location is defined in `figure_paths.py`, created automatically when needed,
-and ignored by Git because generated PNG reports are outputs rather than source
-code. Pass `--output PATH` to a report command when a deliberate alternate
-location is required.
+location is defined in `reports/paths.py` and re-exported by the historical
+`figure_paths.py` facade. It is created automatically when needed and ignored
+by Git because generated PNG reports are outputs rather than source code. Pass
+`--output PATH` to a report command when a deliberate alternate location is
+required.
 
 ---
 
@@ -339,8 +355,9 @@ cooling action.
 ## 6. Thermoelectric heat-rate model
 
 The pure thermoelectric functions live in
-[`thermoelectric.py`](thermoelectric.py). Their parameters are grouped in the
-immutable `ThermoelectricParameters` dataclass.
+[`physics/thermoelectric.py`](physics/thermoelectric.py). The historical
+[`thermoelectric.py`](thermoelectric.py) path re-exports them. Their parameters
+are grouped in the immutable `ThermoelectricParameters` dataclass.
 
 ### 6.1 Peltier terms
 
@@ -514,8 +531,9 @@ diagnostics use `None` at those points.
 
 ## 7. Two-node transient energy balances
 
-The transient model lives in [`transient.py`](transient.py). The cold and hot
-nodes store energy according to their thermal capacitances.
+The transient model lives in [`physics/two_node.py`](physics/two_node.py). The
+historical [`transient.py`](transient.py) module is a compatibility facade. The
+cold and hot nodes store energy according to their thermal capacitances.
 
 ### 7.1 Cold node
 
@@ -646,7 +664,7 @@ These are model predictions, not measurements.
 
 ## 9. Code walkthrough: conventional model
 
-### 9.1 `thermoelectric.py`: pure algebra
+### 9.1 `physics/thermoelectric.py`: pure algebra
 
 `ThermoelectricParameters` stores $\alpha$, $R$, and $K$. The module then
 provides small pure functions:
@@ -663,7 +681,12 @@ provides small pure functions:
 These functions do not advance time or modify state. Given the same inputs,
 they return the same scalar outputs.
 
-### 9.2 `controls.py`: current schedules
+### 9.2 `core/controls.py`: current schedules
+
+The historical `simulation/controls.py` path remains as a compatibility
+facade, but the dependency-free current-input definitions now live in
+`core/controls.py` so both physics and higher layers can use them without a
+package cycle.
 
 `PiecewiseConstantCurrent` represents a right-continuous schedule. If
 
@@ -1471,7 +1494,9 @@ print(tuple(step.name for step in provenance.observation_steps))
 reconstructed_experiment = provenance.experiment.to_experiment()
 ~~~
 
-The separate [dataset_quality.py](dataset_quality.py) module calculates a
+The separate [dataset_quality.py](dataset_quality.py) compatibility entry point
+combines the reusable summaries in `observations/quality.py` with the frozen
+presentation workflow in `reports/dataset_quality.py`. Together they calculate a
 deterministic summary for one dataset or a collection. For each dataset it
 reports:
 
@@ -4041,6 +4066,30 @@ optimization.
 
 ## 15. Current package structure
 
+The implementation now follows this dependency-layered structure:
+
+```text
+thermotwin/
+├── core/             # dependency-free current-input data structures
+├── physics/          # thermoelectric equations; two- and four-node models
+├── numerics/         # matrices, integration, bracketing, quantiles
+├── simulation/       # diagnostics and reproducible reference cases
+├── observations/     # schemas, sensor effects, quality, hardware CSV
+├── inference/        # conventional inverse problems and experiment selection
+├── pinn/             # optional PyTorch forward and inverse PINNs
+├── design/           # control maps, PWM, materials, Bayesian co-design
+│   └── codesign/     # models, evaluation, sampling, optimization, robustness
+├── studies/          # frozen sensitivity and robustness campaigns
+├── reports/          # Matplotlib reports and showcase composition
+├── _public_api.py    # stable dependency-light convenience exports
+└── *.py              # thin historical compatibility facades
+```
+
+The detailed dependency rules are in
+[`../docs/thermotwin/ARCHITECTURE.md`](../docs/thermotwin/ARCHITECTURE.md).
+The following longer listing includes the historical facade paths because they
+remain intentionally supported:
+
 ```text
 thermotwin/
 ├── __init__.py
@@ -4165,10 +4214,11 @@ tests/
 └── test_contact_resistance_combined_study.py
 ```
 
-The core public API is re-exported from `thermotwin/__init__.py`. Executable
-inference modules are imported directly from their named modules so they can
-run cleanly with `python3 -m`. Optional PyTorch modules also remain direct
-imports so importing the core package does not require PyTorch.
+The stable public API is defined in `thermotwin/_public_api.py` and re-exported
+from `thermotwin/__init__.py`. Executable historical modules are thin facades,
+so existing `python3 -m` commands continue to work. Optional PyTorch and
+Matplotlib modules live below `pinn/` and `reports/`; importing the core package
+does not load either dependency.
 
 ---
 

@@ -1,15 +1,3 @@
-"""Shared output locations for generated ThermoTwin figures."""
+"""Compatibility facade for :mod:`thermotwin.reports.paths`."""
 
-from pathlib import Path
-
-
-FIGURES_DIRECTORY = Path(__file__).resolve().parent / "figures"
-
-
-def default_figure_path(filename: str) -> Path:
-    """Return an absolute path inside the package figures directory."""
-
-    candidate = Path(filename)
-    if not filename or candidate.name != filename:
-        raise ValueError("figure filename must be one plain filename")
-    return FIGURES_DIRECTORY / filename
+from .reports.paths import *  # noqa: F401,F403

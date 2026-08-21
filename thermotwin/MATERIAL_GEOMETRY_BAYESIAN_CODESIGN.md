@@ -420,9 +420,15 @@ process. Matplotlib is needed only for the report figure.
 
 | File | Responsibility |
 | --- | --- |
-| `material_catalog.py` | public-data provenance, curated same-row records, material derived properties |
-| `material_geometry_codesign.py` | module scaling, design generator, steady evaluation, current selection, GP, BO, random baseline, robustness |
-| `material_geometry_codesign_report.py` | command-line runner, nine-panel evidence figure, text summary |
+| `design/materials.py` | public-data provenance, curated same-row records, material derived properties |
+| `design/codesign/models.py` | immutable design, application, campaign, and result records |
+| `design/codesign/evaluation.py` | module scaling, steady evaluation, constraints, and current selection |
+| `design/codesign/sampling.py` | Latin-hypercube generation and feature encoding |
+| `design/codesign/optimization.py` | Gaussian process, expected improvement, BO, and random baseline |
+| `design/codesign/robustness.py` | fixed-current property and interface perturbations |
+| `design/codesign/campaign.py` | experiment orchestration and text summary |
+| `reports/material_codesign.py` | command-line runner and nine-panel evidence figure |
+| `material_geometry_codesign.py` and `material_geometry_codesign_report.py` | historical compatibility facades |
 | `test_material_catalog.py` | signs, provenance, $ZT$, and geometry limiting cases |
 | `test_material_geometry_codesign.py` | space filling, energy-consistent evaluation, current scan, GP, acquisition, budgets, reproducibility, robustness |
 | `test_material_geometry_codesign_report.py` | default figure location and PNG generation |

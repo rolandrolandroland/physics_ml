@@ -29,9 +29,15 @@ After completing the sheet, I should be able to:
 
 ## Files to keep open
 
-- `thermotwin/material_catalog.py`
-- `thermotwin/material_geometry_codesign.py`
-- `thermotwin/material_geometry_codesign_report.py`
+- `thermotwin/design/materials.py`
+- `thermotwin/design/codesign/models.py`
+- `thermotwin/design/codesign/evaluation.py`
+- `thermotwin/design/codesign/sampling.py`
+- `thermotwin/design/codesign/optimization.py`
+- `thermotwin/design/codesign/robustness.py`
+- `thermotwin/design/codesign/campaign.py`
+- `thermotwin/reports/material_codesign.py`
+- `thermotwin/material_geometry_codesign.py` (compatibility facade)
 - `tests/test_material_catalog.py`
 - `tests/test_material_geometry_codesign.py`
 - `tests/test_material_geometry_codesign_report.py`

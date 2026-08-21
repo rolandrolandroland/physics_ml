@@ -604,9 +604,13 @@ more clearly and reproducibly than a hurried interface.
 
 ### Existing foundation
 
-- Modular package, extensive tests, two levels of README documentation,
+- Dependency-layered package with installable metadata, compatibility-preserved
+  historical imports, extensive tests, two levels of README documentation,
   experiment walkthroughs, learning worksheets, report commands, and a focused
   PINN showcase.
+- Separate physics, numerics, simulation, observation, inference, PINN,
+  design, study, and report namespaces; importing the core does not load
+  PyTorch or Matplotlib.
 - A one-command engineering decision showcase covering sparse diagnosis,
   control comparison, experiment selection, and assembly screening.
 - Separate walkthroughs that retain negative results and distinguish local
