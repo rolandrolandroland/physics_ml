@@ -508,7 +508,7 @@ Perform these only after writing predictions.
 
 1. Evaluate `scheduled_current_tensor` on times immediately around both
    switches.
-2. Print `current_segment_boundaries` and `current_segment_values` for the
+2. Print `current_segment_boundaries` and evaluate `scheduled_current_tensor` for the
    frozen experiment.
 3. Count collocation points in each interval.
 4. Create an untrained model and evaluate `boundary_temperature_jumps`.

@@ -2,6 +2,7 @@ import unittest
 
 from thermotwin import (
     FourNodeContactThermalParameters,
+    IntegrationDivergenceError,
     PiecewiseConstantCurrent,
     ThermoelectricParameters,
     TwoNodeThermalParameters,
@@ -166,6 +167,17 @@ class ContactTransientTests(unittest.TestCase):
                 current=float("nan"),
                 cold_reservoir_temperature=300.0,
                 hot_reservoir_temperature=300.0,
+            )
+
+    def test_steady_state_rejects_nonpositive_kelvin_solution(self):
+        with self.assertRaisesRegex(ValueError, "positive-kelvin"):
+            four_node_contact_steady_state(
+                self.thermoelectric,
+                self.thermal,
+                current=0.0,
+                cold_reservoir_temperature=300.0,
+                hot_reservoir_temperature=300.0,
+                cold_external_heat=-1e6,
             )
 
     def test_scalar_steady_state_is_exact_current_moment_limit(self):
@@ -431,6 +443,36 @@ class ContactTransientTests(unittest.TestCase):
         )
 
         self.assertEqual(trajectory.time, (0.0, 1.0, 3.0, 4.0))
+
+    def test_stiff_rk4_failure_reports_integration_divergence(self):
+        stiff = FourNodeContactThermalParameters(
+            cold_face_thermal_capacitance=1.0,
+            hot_face_thermal_capacitance=1.0,
+            cold_exchanger_thermal_capacitance=1.0,
+            hot_exchanger_thermal_capacitance=1.0,
+            cold_contact_resistance=0.01,
+            hot_contact_resistance=0.01,
+            cold_reservoir_conductance=0.0,
+            hot_reservoir_conductance=0.0,
+        )
+
+        with self.assertRaisesRegex(
+            IntegrationDivergenceError,
+            "integration diverged.*reduce the time step",
+        ):
+            integrate_four_node_contact(
+                ThermoelectricParameters(0.0, 0.0, 0.0),
+                stiff,
+                initial_cold_face_temperature=290.0,
+                initial_hot_face_temperature=310.0,
+                initial_cold_exchanger_temperature=310.0,
+                initial_hot_exchanger_temperature=290.0,
+                duration=1.0,
+                time_step=1.0,
+                current=0.0,
+                cold_reservoir_temperature=300.0,
+                hot_reservoir_temperature=300.0,
+            )
 
     def test_contact_only_integration_conserves_stored_energy(self):
         no_module_effects = ThermoelectricParameters(

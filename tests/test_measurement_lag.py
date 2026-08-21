@@ -103,26 +103,49 @@ class MeasurementLagTests(unittest.TestCase):
             (300.0, 300.0, 300.0, 300.0),
         )
 
-    def test_step_target_follows_exponential_first_order_response(self):
-        step = one_sensor_dataset(
+    def test_piecewise_linear_then_constant_target_is_integrated_exactly(self):
+        ramp_then_hold = one_sensor_dataset(
             (0.0, 1.0, 2.0),
             (0.0, 10.0, 10.0),
         )
         result = apply_first_order_temperature_lag(
-            step,
+            ramp_then_hold,
             FirstOrderTemperatureLag(default_time_constant=1.0),
         )
         decay = math.exp(-1.0)
+        ramp_end = 10.0 * decay
 
         self.assertEqual(result.dataset.observations[0].temperature, 0.0)
         self.assertAlmostEqual(
             result.dataset.observations[1].temperature,
-            (1.0 - decay) * 10.0,
+            ramp_end,
         )
         self.assertAlmostEqual(
             result.dataset.observations[2].temperature,
-            decay * (1.0 - decay) * 10.0 + (1.0 - decay) * 10.0,
+            decay * ramp_end + (1.0 - decay) * 10.0,
         )
+
+    def test_linear_ramp_matches_continuous_first_order_solution(self):
+        time_step = 0.1
+        times = tuple(index * time_step for index in range(101))
+        ramp = one_sensor_dataset(times, times)
+        time_constant = 2.0
+
+        result = apply_first_order_temperature_lag(
+            ramp,
+            FirstOrderTemperatureLag(
+                default_time_constant=time_constant,
+            ),
+        )
+
+        for observation in result.dataset.observations:
+            expected = (
+                observation.time
+                - time_constant
+                + time_constant
+                * math.exp(-observation.time / time_constant)
+            )
+            self.assertAlmostEqual(observation.temperature, expected, places=12)
 
     def test_irregular_intervals_use_their_actual_time_differences(self):
         irregular = one_sensor_dataset(
@@ -133,7 +156,7 @@ class MeasurementLagTests(unittest.TestCase):
             irregular,
             FirstOrderTemperatureLag(default_time_constant=1.0),
         )
-        first = (1.0 - math.exp(-0.5)) * 10.0
+        first = 20.0 * (0.5 - (1.0 - math.exp(-0.5)))
         second = math.exp(-1.5) * first + (1.0 - math.exp(-1.5)) * 10.0
 
         self.assertAlmostEqual(result.dataset.observations[1].temperature, first)

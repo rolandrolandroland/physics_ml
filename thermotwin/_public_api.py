@@ -1,6 +1,7 @@
 """ThermoTwin physics models."""
 
 from .core.controls import PiecewiseConstantCurrent
+from .numerics.integration import IntegrationDivergenceError
 
 from .physics.four_node import (
     FourNodeContactSteadyState,
@@ -208,6 +209,7 @@ __all__ = [
     "TwoNodeExperiment",
     "TwoNodeThermalParameters",
     "PiecewiseConstantCurrent",
+    "IntegrationDivergenceError",
     "APPLICATION_SPECIFICATIONS",
     "ApplicationSpecification",
     "BayesianOptimizationResult",

@@ -1,7 +1,10 @@
+from dataclasses import replace
 import math
 import unittest
 
 from thermotwin.contact_resistance_inference import (
+    ContactResistanceDatasetSplit,
+    ContactResistanceRegimeDataset,
     ContactResistanceSearchConfig,
     reference_contact_resistance_dataset_split,
 )
@@ -47,6 +50,7 @@ class ContactResistanceNoiseStudyTests(unittest.TestCase):
             {"trial_count": True},
             {"first_seed": 1.5},
             {"first_seed": True},
+            {"first_seed": -1},
             {"search": "invalid"},
         )
         for values in invalid_configs:
@@ -73,13 +77,56 @@ class ContactResistanceNoiseStudyTests(unittest.TestCase):
         )
         self.assertEqual(len(seeds), len(set(seeds)))
 
-        for first_seed, trial_index in ((1.5, 0), (True, 0), (1, -1), (1, 1.5)):
+        for first_seed, trial_index in (
+            (1.5, 0),
+            (True, 0),
+            (-1, 0),
+            (1, -1),
+            (1, 1.5),
+        ):
             with self.subTest(
                 first_seed=first_seed,
                 trial_index=trial_index,
             ):
                 with self.assertRaises(ValueError):
                     contact_resistance_noise_seeds(first_seed, trial_index)
+
+    def test_multiple_regimes_get_independent_noise_across_split_boundaries(self):
+        first_training = self.ideal.train[0]
+        second_training = ContactResistanceRegimeDataset(
+            regime=replace(
+                first_training.regime,
+                name="second_training_regime",
+            ),
+            observations=first_training.observations,
+        )
+        multiple_regimes = ContactResistanceDatasetSplit(
+            train=(first_training, second_training),
+            validation=self.ideal.validation,
+            test=self.ideal.test,
+        )
+        noisy = noisy_contact_resistance_dataset_split(
+            multiple_regimes,
+            noise_standard_deviation=0.05,
+            seeds=contact_resistance_noise_seeds(2026, 0),
+        )
+
+        second_training_noise = tuple(
+            observed.temperature - ideal.temperature
+            for observed, ideal in zip(
+                noisy.train[1].observations.observations,
+                second_training.observations.observations,
+            )
+        )
+        validation_noise = tuple(
+            observed.temperature - ideal.temperature
+            for observed, ideal in zip(
+                noisy.validation[0].observations.observations,
+                self.ideal.validation[0].observations.observations,
+            )
+        )
+
+        self.assertNotEqual(second_training_noise, validation_noise)
 
     def test_zero_noise_split_is_exact_ideal_limiting_case(self):
         noisy = noisy_contact_resistance_dataset_split(

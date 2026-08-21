@@ -4,6 +4,10 @@ import math
 from typing import Callable, Optional, Sequence, Tuple
 
 
+class IntegrationDivergenceError(RuntimeError):
+    """Raised when a numerical trajectory leaves the model's valid domain."""
+
+
 def linear_interpolation(
     left_time: float,
     right_time: float,
@@ -125,6 +129,7 @@ def first_rising_crossing_bracket(
 
 
 __all__ = [
+    "IntegrationDivergenceError",
     "first_rising_crossing_bracket",
     "interpolated_value",
     "linear_interpolation",

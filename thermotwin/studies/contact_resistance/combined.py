@@ -99,8 +99,9 @@ class ContactResistanceCombinedStudyConfig:
         if (
             not isinstance(self.first_seed, int)
             or isinstance(self.first_seed, bool)
+            or self.first_seed < 0
         ):
-            raise ValueError("first seed must be an integer")
+            raise ValueError("first seed must be a nonnegative integer")
         if not isinstance(self.bias_model, FixedTemperatureBias):
             raise ValueError("bias model must be fixed temperature bias")
         if not isinstance(self.lag_model, FirstOrderTemperatureLag):

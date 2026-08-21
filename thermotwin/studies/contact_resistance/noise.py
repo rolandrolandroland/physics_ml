@@ -61,8 +61,9 @@ class ContactResistanceNoiseStudyConfig:
         if (
             not isinstance(self.first_seed, int)
             or isinstance(self.first_seed, bool)
+            or self.first_seed < 0
         ):
-            raise ValueError("first seed must be an integer")
+            raise ValueError("first seed must be a nonnegative integer")
         if not isinstance(self.search, ContactResistanceSearchConfig):
             raise ValueError("search must be a contact-resistance config")
         object.__setattr__(
@@ -73,7 +74,7 @@ class ContactResistanceNoiseStudyConfig:
 
 
 class ContactResistanceNoiseSeeds(NamedTuple):
-    """Independent saved seeds for one trial's three regimes."""
+    """Independent saved seeds for one trial's three dataset splits."""
 
     training: int
     validation: int
@@ -134,10 +135,14 @@ def contact_resistance_noise_seeds(
     first_seed: int,
     trial_index: int,
 ) -> ContactResistanceNoiseSeeds:
-    """Return three nonoverlapping deterministic seeds for one trial."""
+    """Return three nonoverlapping deterministic split seeds for one trial."""
 
-    if not isinstance(first_seed, int) or isinstance(first_seed, bool):
-        raise ValueError("first seed must be an integer")
+    if (
+        not isinstance(first_seed, int)
+        or isinstance(first_seed, bool)
+        or first_seed < 0
+    ):
+        raise ValueError("first seed must be a nonnegative integer")
     if (
         not isinstance(trial_index, int)
         or isinstance(trial_index, bool)
@@ -145,11 +150,49 @@ def contact_resistance_noise_seeds(
     ):
         raise ValueError("trial index must be a nonnegative integer")
     first_trial_seed = first_seed + 3 * trial_index
+    if first_trial_seed + 2 >= _ADDITIONAL_REGIME_SEED_NAMESPACE:
+        raise ValueError("first seed and trial index exceed the seed namespace")
     return ContactResistanceNoiseSeeds(
         training=first_trial_seed,
         validation=first_trial_seed + 1,
         test=first_trial_seed + 2,
     )
+
+
+_ADDITIONAL_REGIME_SEED_NAMESPACE = 1 << 128
+
+
+def _regime_noise_seed(split_seed: int, regime_index: int) -> int:
+    """Map a split seed and regime index to a collision-free random seed.
+
+    The first regime deliberately retains the historical split seed so the
+    established one-regime studies remain numerically reproducible. Additional
+    regimes use a disjoint integer namespace and Cantor pairing, which makes
+    every ``(split_seed, regime_index)`` pair unique.
+    """
+
+    if (
+        not isinstance(split_seed, int)
+        or isinstance(split_seed, bool)
+        or not 0 <= split_seed < _ADDITIONAL_REGIME_SEED_NAMESPACE
+    ):
+        raise ValueError("split seed must be a nonnegative supported integer")
+    if (
+        not isinstance(regime_index, int)
+        or isinstance(regime_index, bool)
+        or regime_index < 0
+    ):
+        raise ValueError("regime index must be a nonnegative integer")
+    if regime_index == 0:
+        return split_seed
+    paired_index = regime_index - 1
+    paired = (
+        (split_seed + paired_index)
+        * (split_seed + paired_index + 1)
+        // 2
+        + paired_index
+    )
+    return _ADDITIONAL_REGIME_SEED_NAMESPACE + paired
 
 
 def _noise_regime_group(
@@ -159,12 +202,12 @@ def _noise_regime_group(
     seed: int,
 ) -> Tuple[ContactResistanceRegimeDataset, ...]:
     noisy_datasets = []
-    for offset, dataset in enumerate(datasets):
+    for regime_index, dataset in enumerate(datasets):
         noisy = apply_gaussian_temperature_noise(
             dataset.observations,
             GaussianTemperatureNoise(
                 default_standard_deviation=standard_deviation,
-                random_seed=seed + offset,
+                random_seed=_regime_noise_seed(seed, regime_index),
             ),
         )
         noisy_datasets.append(

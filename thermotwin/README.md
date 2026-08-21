@@ -239,6 +239,12 @@ external heat inputs remain constant during a run. The function returns the
 sampled time, cold-temperature, and hot-temperature histories and uses only the
 Python standard library.
 
+Because fixed-step RK4 is explicit, overly large steps can diverge for fast
+contact or capacitance dynamics. The solvers detect invalid RK4 stages and
+raise `IntegrationDivergenceError` with the failing time and step-size
+guidance. Algebraic steady states at or below absolute zero are rejected as
+outside the model's physical domain.
+
 For constant inputs, `two_node_steady_state` independently sets both node
 energy-storage rates to zero and solves the resulting two-by-two algebraic
 system. Comparing a long RK4 trajectory with this solution checks that the
@@ -517,6 +523,10 @@ temperature sensor receives independent zero-mean Gaussian noise with a
 fit; bias, lag, missingness, current error, and model mismatch remain disabled
 so this stage isolates random temperature noise.
 
+The deterministic allocator keeps trial and split streams distinct and maps
+any additional regimes into a separate paired seed namespace. Adding another
+training regime therefore cannot silently reuse a validation or test stream.
+
 ~~~bash
 python3 -m thermotwin.contact_resistance_noise_study
 ~~~
@@ -609,11 +619,11 @@ same 100 seeds used by the noise-only study, it produces:
 
 | Metric | Combined result |
 | --- | ---: |
-| Mean inferred resistance | 0.201589285 K/W |
-| Sample standard deviation | 0.005680841 K/W |
-| Mean parameter bias | -0.048410715 K/W |
-| Parameter RMSE | 0.048739579 K/W |
-| Empirical 5th--95th percentiles | 0.192003358--0.210809525 K/W |
+| Mean inferred resistance | 0.201590126 K/W |
+| Sample standard deviation | 0.005722516 K/W |
+| Mean parameter bias | -0.048409874 K/W |
+| Parameter RMSE | 0.048743570 K/W |
+| Empirical 5th--95th percentiles | 0.191932514--0.210875489 K/W |
 | Search-bound hits | 0 |
 
 The systematic bias is much larger than the random trial spread. Repetition

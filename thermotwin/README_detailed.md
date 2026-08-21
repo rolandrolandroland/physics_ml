@@ -764,6 +764,12 @@ The initial and exact requested final times are always included. A final
 partial step is used when duration is not an integer multiple of the requested
 step.
 
+RK4 is explicit and can diverge when the step is too large for fast contact or
+capacitance dynamics. Every intermediate stage and completed step is checked.
+A nonfinite state, nonfinite rate, or departure from positive kelvin raises
+`IntegrationDivergenceError` with the failing time and advice to reduce the
+step or revise the inputs; it is not mislabeled as invalid initial data.
+
 ### 9.5 RK4 at current switches
 
 An RK4 interval never crosses a known piecewise-constant current transition.
@@ -785,6 +791,8 @@ that system independently of RK4.
 
 Thermal capacitances do not appear because steady state has no stored-energy
 rate. A singular or numerically ill-conditioned system raises `ValueError`.
+An algebraically unique but nonpositive-kelvin result is also rejected because
+it lies outside the thermodynamic and constant-property model domain.
 
 Comparing a long RK4 run with the algebraic result helps distinguish a correct
 equilibrium from a time-stepping result that merely appears stable.
@@ -936,6 +944,11 @@ The integrate_four_node_contact function uses the same RK4 and exact
 current-transition behavior as the two-node integrator. Contact resistances
 must be finite and positive. To omit contacts, use the two-node model rather
 than setting a resistance to zero.
+
+The four-node solver applies the same stage-by-stage divergence checks. Stiff
+contact dynamics that make explicit RK4 leave the positive-kelvin domain raise
+`IntegrationDivergenceError` and identify the integration time, rather than
+surfacing a lower-level temperature-input `ValueError`.
 
 The [contact_experiments.py](contact_experiments.py) module freezes a generic
 comparison case with:
@@ -2287,9 +2300,12 @@ The frozen study makes these choices:
 | Search interval | 0.05--1.0 K/W |
 | Search tolerance | 1e-6 K/W |
 
-Each trial assigns a different seed to the train, validation, and test regime.
-Trial $i$ uses seeds $2026+3i$, $2027+3i$, and $2028+3i$, respectively. Noise
-is drawn independently for all four temperature sensors, but the estimator
+Each trial assigns a different base seed to the train, validation, and test
+split. Trial $i$ uses seeds $2026+3i$, $2027+3i$, and $2028+3i$, respectively.
+The first regime in each split retains that historical seed. Any additional
+regimes receive seeds from a disjoint Cantor-paired namespace, so a second
+training regime cannot collide with the validation stream or another trial.
+Noise is drawn independently for all four temperature sensors, but the estimator
 still fits only the cold-face and cold-exchanger readings. The hot pair is not
 allowed to influence the fitted parameter. Bias, lag, missingness, current
 error, parameter error, and model discrepancy are disabled.
@@ -2385,28 +2401,36 @@ python3 -m thermotwin.contact_resistance_bias_study
 
 The [contact_resistance_lag_study.py](contact_resistance_lag_study.py) module
 filters dense 0.1 s truth before sampling the result every 1 s. For one time
-step, the exact first-order update is
+step, the ideal temperature is linearly interpolated between its two dense
+samples. The corresponding exact first-order update is
 
 $$
-T_{s,k}^{lag}=a_k T_{s,k-1}^{lag}+(1-a_k)T_{s,k}^{ideal},
+T_{s,k}^{lag}=a_k T_{s,k-1}^{lag}
+ +(1-a_k)T_{s,k-1}^{ideal}
+ +m_{s,k}\left[\Delta t_k-\tau_s(1-a_k)\right],
 $$
 
 $$
-a_k=\exp\left(-\frac{\Delta t_k}{\tau_s}\right).
+a_k=\exp\left(-\frac{\Delta t_k}{\tau_s}\right),\qquad
+m_{s,k}=\frac{T_{s,k}^{ideal}-T_{s,k-1}^{ideal}}{\Delta t_k}.
 $$
+
+Using the interval's right-end temperature as a constant target would lead a
+continuous ramp by approximately half a dense time step. The piecewise-linear
+update removes that sampling artifact while remaining exact for linear ramps.
 
 Applying lag before output downsampling is important: the sensor state evolves
-between reported readings. The estimator does not include $	au_s$ and is
+between reported readings. The estimator does not include $\tau_s$ and is
 allowed to change only contact resistance, so it tries to explain a sensor
 dynamic as a physical contact dynamic.
 
 | Lag case | Inferred resistance | Test observation RMSE |
 | --- | ---: | ---: |
 | Zero lag | 0.249999776 K/W | approximately 0 K |
-| Cold face, 2 s | 0.246880379 K/W | 0.194466 K |
-| Cold exchanger, 2 s | 0.270766427 K/W | 0.077482 K |
-| Both cold sensors, 2 s | 0.270846727 K/W | 0.210732 K |
-| Face 2 s, exchanger 0.5 s | 0.252142030 K/W | 0.195915 K |
+| Cold face, 2 s | 0.246787415 K/W | 0.199408 K |
+| Cold exchanger, 2 s | 0.271277687 K/W | 0.079472 K |
+| Both cold sensors, 2 s | 0.271434083 K/W | 0.216076 K |
+| Face 2 s, exchanger 0.5 s | 0.252630129 K/W | 0.201088 K |
 
 The parameter shifts demonstrate confounding. The remaining held-out
 residuals demonstrate that one static resistance cannot fully reproduce a
@@ -2510,15 +2534,15 @@ Across 100 trials, the result is:
 
 | Metric | Combined result |
 | --- | ---: |
-| Mean inferred resistance | 0.201589285 K/W |
-| Sample standard deviation | 0.005680841 K/W |
-| Mean parameter bias | -0.048410715 K/W |
-| Parameter RMSE | 0.048739579 K/W |
-| Empirical 5th percentile | 0.192003358 K/W |
-| Empirical 95th percentile | 0.210809525 K/W |
+| Mean inferred resistance | 0.201590126 K/W |
+| Sample standard deviation | 0.005722516 K/W |
+| Mean parameter bias | -0.048409874 K/W |
+| Parameter RMSE | 0.048743570 K/W |
+| Empirical 5th percentile | 0.191932514 K/W |
+| Empirical 95th percentile | 0.210875489 K/W |
 | Search-bound hits | 0 |
 
-The mean observation RMSEs are 0.145442, 0.117285, and 0.213847 K for train,
+The mean observation RMSEs are 0.148118, 0.118964, and 0.218345 K for train,
 validation, and test. Mean hidden-truth RMSEs are 0.049159, 0.039371, and
 0.065644 K. The systematic parameter bias is about 8.5 times the random sample
 standard deviation. More repeated trials can estimate the spread more
@@ -3285,7 +3309,7 @@ Checks:
 
 - the frozen noise level, trial count, first seed, and search settings;
 - rejection of invalid configurations and seed inputs;
-- unique deterministic train, validation, and test seeds for every trial;
+- unique deterministic seeds across trials, splits, and multiple regimes;
 - zero noise as the exact ideal-dataset limiting case;
 - same-seed reproducibility and changed-seed variation;
 - preservation of regime, sensor, time, location, current, and count fields;

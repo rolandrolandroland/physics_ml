@@ -10,12 +10,13 @@ from dataclasses import dataclass
 from typing import NamedTuple, Tuple
 
 from ..core.controls import CurrentInput, PiecewiseConstantCurrent, current_at
+from ..numerics.integration import IntegrationDivergenceError
+from ..numerics.matrices import inverse_and_determinant
 from .thermoelectric import (
     ThermoelectricParameters,
     cold_side_heat,
     hot_side_heat,
 )
-from ..numerics.matrices import inverse_and_determinant
 
 
 @dataclass(frozen=True)
@@ -103,6 +104,38 @@ class FourNodeContactSteadyState(NamedTuple):
     hot_face: float
     cold_exchanger: float
     hot_exchanger: float
+
+
+def _validate_integration_temperatures(
+    temperatures: Tuple[float, ...],
+    *,
+    time: float,
+    stage: str,
+) -> None:
+    if any(not math.isfinite(value) for value in temperatures):
+        reason = "the temperature state became nonfinite"
+    elif any(value <= 0.0 for value in temperatures):
+        reason = "the temperature state left the positive-kelvin domain"
+    else:
+        return
+    raise IntegrationDivergenceError(
+        f"four-node contact integration diverged near t={time:.9g} s during "
+        f"{stage}: {reason}; reduce the time step or revise the model inputs"
+    )
+
+
+def _validate_integration_rates(
+    rates: FourNodeContactTemperatureRates,
+    *,
+    time: float,
+    stage: str,
+) -> None:
+    if any(not math.isfinite(value) for value in rates):
+        raise IntegrationDivergenceError(
+            f"four-node contact integration diverged near t={time:.9g} s "
+            f"during {stage}: a temperature rate became nonfinite; reduce "
+            "the time step or revise the model inputs"
+        )
 
 
 def thermal_contact_heat(
@@ -235,6 +268,8 @@ def four_node_contact_steady_state_from_current_moments(
     )
     if any(not math.isfinite(value) for value in finite_inputs):
         raise ValueError("steady-state inputs must be finite")
+    if cold_reservoir_temperature <= 0.0 or hot_reservoir_temperature <= 0.0:
+        raise ValueError("reservoir temperatures must be positive kelvin")
     if mean_square_current < 0.0:
         raise ValueError("mean-square current must be nonnegative")
     moment_tolerance = 1e-12 * max(1.0, mean_current**2)
@@ -300,7 +335,15 @@ def four_node_contact_steady_state_from_current_moments(
         sum(coefficient * value for coefficient, value in zip(row, source))
         for row in inverse
     )
-    return FourNodeContactSteadyState(*solution)
+    steady_state = FourNodeContactSteadyState(*solution)
+    if any(not math.isfinite(value) for value in steady_state):
+        raise ValueError("steady-state temperatures must be finite")
+    if any(value <= 0.0 for value in steady_state):
+        raise ValueError(
+            "steady-state solution lies outside the positive-kelvin model "
+            "domain; reduce the current or revise the model inputs"
+        )
+    return steady_state
 
 
 def four_node_contact_steady_state(
@@ -370,6 +413,10 @@ def integrate_four_node_contact(
         raise ValueError(
             "temperatures and external heat inputs must be finite"
         )
+    if any(value <= 0.0 for value in finite_inputs[:6]):
+        raise ValueError(
+            "initial and reservoir temperatures must be positive kelvin"
+        )
     current_at(current, 0.0)
 
     times = [0.0]
@@ -384,20 +431,46 @@ def integrate_four_node_contact(
         cold_exchanger_temperature: float,
         hot_exchanger_temperature: float,
         step_current: float,
+        evaluation_time: float,
+        stage: str,
     ) -> FourNodeContactTemperatureRates:
-        return four_node_contact_rhs(
-            thermoelectric_parameters,
-            thermal_parameters,
-            cold_face_temperature=cold_face_temperature,
-            hot_face_temperature=hot_face_temperature,
-            cold_exchanger_temperature=cold_exchanger_temperature,
-            hot_exchanger_temperature=hot_exchanger_temperature,
-            current=step_current,
-            cold_reservoir_temperature=cold_reservoir_temperature,
-            hot_reservoir_temperature=hot_reservoir_temperature,
-            cold_external_heat=cold_external_heat,
-            hot_external_heat=hot_external_heat,
+        temperatures = (
+            cold_face_temperature,
+            hot_face_temperature,
+            cold_exchanger_temperature,
+            hot_exchanger_temperature,
         )
+        _validate_integration_temperatures(
+            temperatures,
+            time=evaluation_time,
+            stage=stage,
+        )
+        try:
+            rates = four_node_contact_rhs(
+                thermoelectric_parameters,
+                thermal_parameters,
+                cold_face_temperature=cold_face_temperature,
+                hot_face_temperature=hot_face_temperature,
+                cold_exchanger_temperature=cold_exchanger_temperature,
+                hot_exchanger_temperature=hot_exchanger_temperature,
+                current=step_current,
+                cold_reservoir_temperature=cold_reservoir_temperature,
+                hot_reservoir_temperature=hot_reservoir_temperature,
+                cold_external_heat=cold_external_heat,
+                hot_external_heat=hot_external_heat,
+            )
+        except OverflowError as error:
+            raise IntegrationDivergenceError(
+                "four-node contact integration overflowed near "
+                f"t={evaluation_time:.9g} s during {stage}; reduce the time "
+                "step or revise the model inputs"
+            ) from error
+        _validate_integration_rates(
+            rates,
+            time=evaluation_time,
+            stage=stage,
+        )
+        return rates
 
     while times[-1] < duration:
         current_time = times[-1]
@@ -416,12 +489,15 @@ def integrate_four_node_contact(
         hot_exchanger = hot_exchanger_temperatures[-1]
         step_current = current_at(current, current_time)
 
+        midpoint_time = current_time + 0.5 * step
         k1 = rates_at(
             cold_face,
             hot_face,
             cold_exchanger,
             hot_exchanger,
             step_current,
+            current_time,
+            "RK4 k1",
         )
         k2 = rates_at(
             cold_face + 0.5 * step * k1.cold_face,
@@ -429,6 +505,8 @@ def integrate_four_node_contact(
             cold_exchanger + 0.5 * step * k1.cold_exchanger,
             hot_exchanger + 0.5 * step * k1.hot_exchanger,
             step_current,
+            midpoint_time,
+            "RK4 k2",
         )
         k3 = rates_at(
             cold_face + 0.5 * step * k2.cold_face,
@@ -436,6 +514,8 @@ def integrate_four_node_contact(
             cold_exchanger + 0.5 * step * k2.cold_exchanger,
             hot_exchanger + 0.5 * step * k2.hot_exchanger,
             step_current,
+            midpoint_time,
+            "RK4 k3",
         )
         k4 = rates_at(
             cold_face + step * k3.cold_face,
@@ -443,9 +523,11 @@ def integrate_four_node_contact(
             cold_exchanger + step * k3.cold_exchanger,
             hot_exchanger + step * k3.hot_exchanger,
             step_current,
+            next_time,
+            "RK4 k4",
         )
 
-        cold_face_temperatures.append(
+        next_cold_face = (
             cold_face
             + step
             * (
@@ -456,7 +538,7 @@ def integrate_four_node_contact(
             )
             / 6.0
         )
-        hot_face_temperatures.append(
+        next_hot_face = (
             hot_face
             + step
             * (
@@ -467,7 +549,7 @@ def integrate_four_node_contact(
             )
             / 6.0
         )
-        cold_exchanger_temperatures.append(
+        next_cold_exchanger = (
             cold_exchanger
             + step
             * (
@@ -478,7 +560,7 @@ def integrate_four_node_contact(
             )
             / 6.0
         )
-        hot_exchanger_temperatures.append(
+        next_hot_exchanger = (
             hot_exchanger
             + step
             * (
@@ -489,6 +571,20 @@ def integrate_four_node_contact(
             )
             / 6.0
         )
+        _validate_integration_temperatures(
+            (
+                next_cold_face,
+                next_hot_face,
+                next_cold_exchanger,
+                next_hot_exchanger,
+            ),
+            time=next_time,
+            stage="RK4 step result",
+        )
+        cold_face_temperatures.append(next_cold_face)
+        hot_face_temperatures.append(next_hot_face)
+        cold_exchanger_temperatures.append(next_cold_exchanger)
+        hot_exchanger_temperatures.append(next_hot_exchanger)
         times.append(next_time)
 
     return FourNodeContactTemperatureTrajectory(

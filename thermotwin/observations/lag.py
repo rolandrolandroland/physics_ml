@@ -129,9 +129,11 @@ def apply_first_order_temperature_lag(
 ) -> TemperatureLagResult:
     """Filter sensor histories at their supplied times without mutation.
 
-    During each interval, the current input temperature is treated as the
-    relaxation target. The exact constant-target first-order update is used.
-    The first reported value initializes the sensor state exactly.
+    Between adjacent observations, the input temperature is interpolated
+    linearly and the first-order sensor ODE is integrated exactly for that
+    piecewise-linear target. This avoids the half-sample lead introduced by
+    treating the interval's right-end temperature as a constant target. The
+    first reported value initializes the sensor state exactly.
     """
 
     sensor_names = {sensor.name for sensor in dataset.sensors}
@@ -146,6 +148,7 @@ def apply_first_order_temperature_lag(
         )
 
     previous_time = {}
+    previous_input_temperature = {}
     previous_filtered_temperature = {}
     lagged_observations = []
     for observation in dataset.observations:
@@ -160,11 +163,21 @@ def apply_first_order_temperature_lag(
                     "each sensor's observation times must strictly increase"
                 )
             decay = math.exp(-time_step / time_constant)
+            previous_target = previous_input_temperature[sensor_name]
+            target_slope = (
+                observation.temperature - previous_target
+            ) / time_step
             filtered_temperature = (
                 decay * previous_filtered_temperature[sensor_name]
-                + (1.0 - decay) * observation.temperature
+                + (1.0 - decay) * previous_target
+                + target_slope
+                * (
+                    time_step
+                    - time_constant * (1.0 - decay)
+                )
             )
         previous_time[sensor_name] = observation.time
+        previous_input_temperature[sensor_name] = observation.temperature
         previous_filtered_temperature[sensor_name] = filtered_temperature
         lagged_observations.append(
             replace(

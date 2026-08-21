@@ -76,10 +76,10 @@ class ContactResistanceLagStudyTests(unittest.TestCase):
 
     def test_lag_estimates_are_frozen_regressions(self):
         expected = {
-            "cold_face_tau_2s": 0.246880379,
-            "cold_exchanger_tau_2s": 0.270766427,
-            "cold_pair_common_tau_2s": 0.270846727,
-            "cold_pair_asymmetric_tau_2s_0p5s": 0.252142030,
+            "cold_face_tau_2s": 0.246787415,
+            "cold_exchanger_tau_2s": 0.271277687,
+            "cold_pair_common_tau_2s": 0.271434083,
+            "cold_pair_asymmetric_tau_2s_0p5s": 0.252630129,
         }
         for name, inferred in expected.items():
             with self.subTest(name=name):

@@ -8,7 +8,6 @@ try:
         PiecewiseContactForwardPINN,
         PiecewiseContactForwardPINNConfig,
         current_segment_boundaries,
-        current_segment_values,
         piecewise_collocation_times,
         scheduled_current_tensor,
         train_piecewise_contact_forward_pinn,
@@ -24,18 +23,13 @@ class PiecewiseContactForwardPINNTests(unittest.TestCase):
     def setUp(self):
         self.experiment = unipolar_pulse_contact_experiment()
 
-    def test_pulse_boundaries_and_values_match_established_regime(self):
+    def test_pulse_boundaries_match_established_regime(self):
         boundaries = current_segment_boundaries(
             self.experiment.current,
             self.experiment.duration,
         )
-        values = current_segment_values(
-            self.experiment.current,
-            boundaries,
-        )
 
         self.assertEqual(boundaries, (0.0, 5.0, 20.0, 60.0))
-        self.assertEqual(values, (0.0, 1.0, 0.0))
 
     def test_scheduled_current_tensor_is_right_continuous(self):
         times = torch.tensor(

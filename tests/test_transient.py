@@ -1,6 +1,7 @@
 import unittest
 
 from thermotwin import (
+    IntegrationDivergenceError,
     PiecewiseConstantCurrent,
     ThermoelectricParameters,
     TwoNodeThermalParameters,
@@ -430,6 +431,33 @@ class TwoNodeTransientTests(unittest.TestCase):
                 no_thermoelectric_effects,
                 insulated_nodes,
                 current=0.0,
+                cold_reservoir_temperature=300.0,
+                hot_reservoir_temperature=300.0,
+            )
+
+    def test_steady_state_rejects_sub_absolute_zero_solution(self):
+        with self.assertRaisesRegex(ValueError, "positive-kelvin"):
+            two_node_steady_state(
+                self.thermoelectric,
+                self.thermal,
+                current=91.0,
+                cold_reservoir_temperature=300.0,
+                hot_reservoir_temperature=300.0,
+            )
+
+    def test_numerical_overflow_is_reported_as_integration_divergence(self):
+        with self.assertRaisesRegex(
+            IntegrationDivergenceError,
+            "integration overflowed.*reduce the time step",
+        ):
+            integrate_two_node(
+                self.thermoelectric,
+                self.thermal,
+                initial_cold_temperature=300.0,
+                initial_hot_temperature=300.0,
+                duration=1.0,
+                time_step=1.0,
+                current=1e308,
                 cold_reservoir_temperature=300.0,
                 hot_reservoir_temperature=300.0,
             )

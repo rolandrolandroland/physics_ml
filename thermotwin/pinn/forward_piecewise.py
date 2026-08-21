@@ -88,26 +88,6 @@ def current_segment_boundaries(
     return (0.0,) + interior + (float(duration),)
 
 
-def current_segment_values(
-    current: CurrentInput,
-    boundaries: Sequence[float],
-) -> Tuple[float, ...]:
-    """Return the known current in each positive-duration interval."""
-
-    boundaries = tuple(float(value) for value in boundaries)
-    if len(boundaries) < 2:
-        raise ValueError("at least two segment boundaries are required")
-    if any(
-        later <= earlier
-        for earlier, later in zip(boundaries, boundaries[1:])
-    ):
-        raise ValueError("segment boundaries must strictly increase")
-    return tuple(
-        current_at(current, 0.5 * (left + right))
-        for left, right in zip(boundaries, boundaries[1:])
-    )
-
-
 def scheduled_current_tensor(
     current: CurrentInput,
     time: Tensor,

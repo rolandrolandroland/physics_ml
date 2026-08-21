@@ -63,7 +63,7 @@ The relevant files are:
 | Estimator | Bounded golden-section least squares |
 | Search bounds | 0.05 to 1.0 K/W |
 | Noise robustness extension | 100 trials at 0.05 K standard deviation |
-| First noise seed | 2026; three unique regime seeds per trial |
+| First noise seed | 2026; three split seeds plus collision-free added-regime streams |
 | Bias cases | Individual, common-mode, and differential cold offsets |
 | Lag cases | Dense 0.1 s filtering before 1 s sampling |
 | Missingness cases | Regime-aligned cold-pair turn-off windows |

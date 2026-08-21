@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import NamedTuple, Tuple
 
 from ..core.controls import CurrentInput, PiecewiseConstantCurrent, current_at
+from ..numerics.integration import IntegrationDivergenceError
 from .thermoelectric import (
     ThermoelectricParameters,
     cold_side_heat,
@@ -67,6 +68,38 @@ class SteadyStateTemperatures(NamedTuple):
 
     cold: float
     hot: float
+
+
+def _validate_integration_temperatures(
+    temperatures: Tuple[float, ...],
+    *,
+    time: float,
+    stage: str,
+) -> None:
+    if any(not math.isfinite(value) for value in temperatures):
+        reason = "the temperature state became nonfinite"
+    elif any(value <= 0.0 for value in temperatures):
+        reason = "the temperature state left the positive-kelvin domain"
+    else:
+        return
+    raise IntegrationDivergenceError(
+        f"two-node integration diverged near t={time:.9g} s during {stage}: "
+        f"{reason}; reduce the time step or revise the model inputs"
+    )
+
+
+def _validate_integration_rates(
+    rates: TemperatureRates,
+    *,
+    time: float,
+    stage: str,
+) -> None:
+    if any(not math.isfinite(value) for value in rates):
+        raise IntegrationDivergenceError(
+            f"two-node integration diverged near t={time:.9g} s during "
+            f"{stage}: a temperature rate became nonfinite; reduce the time "
+            "step or revise the model inputs"
+        )
 
 
 def two_node_rhs(
@@ -145,6 +178,18 @@ def two_node_steady_state(
     ill-conditioned balance matrix raises ``ValueError``.
     """
 
+    finite_inputs = (
+        current,
+        cold_reservoir_temperature,
+        hot_reservoir_temperature,
+        cold_external_heat,
+        hot_external_heat,
+    )
+    if any(not math.isfinite(value) for value in finite_inputs):
+        raise ValueError("steady-state inputs must be finite")
+    if cold_reservoir_temperature <= 0.0 or hot_reservoir_temperature <= 0.0:
+        raise ValueError("reservoir temperatures must be positive kelvin")
+
     alpha_current = thermoelectric_parameters.seebeck_coefficient * current
     thermal_conductance = thermoelectric_parameters.thermal_conductance
     half_joule_heat = (
@@ -197,7 +242,7 @@ def two_node_steady_state(
             "steady-state balance matrix is singular or ill-conditioned"
         )
 
-    return SteadyStateTemperatures(
+    steady_state = SteadyStateTemperatures(
         cold=(
             cold_source * hot_coefficient
             - cross_coefficient * hot_source
@@ -209,6 +254,14 @@ def two_node_steady_state(
         )
         / determinant,
     )
+    if any(not math.isfinite(value) for value in steady_state):
+        raise ValueError("steady-state temperatures must be finite")
+    if any(value <= 0.0 for value in steady_state):
+        raise ValueError(
+            "steady-state solution lies outside the positive-kelvin model "
+            "domain; reduce the current or revise the model inputs"
+        )
+    return steady_state
 
 
 def integrate_two_node(
@@ -246,6 +299,23 @@ def integrate_two_node(
         raise ValueError("duration must be finite and nonnegative")
     if not math.isfinite(time_step) or time_step <= 0.0:
         raise ValueError("time step must be finite and positive")
+    temperature_inputs = (
+        initial_cold_temperature,
+        initial_hot_temperature,
+        cold_reservoir_temperature,
+        hot_reservoir_temperature,
+    )
+    if any(not math.isfinite(value) for value in temperature_inputs):
+        raise ValueError("initial and reservoir temperatures must be finite")
+    if any(value <= 0.0 for value in temperature_inputs):
+        raise ValueError(
+            "initial and reservoir temperatures must be positive kelvin"
+        )
+    if any(
+        not math.isfinite(value)
+        for value in (cold_external_heat, hot_external_heat)
+    ):
+        raise ValueError("external heat inputs must be finite")
     current_at(current, 0.0)
 
     times = [0.0]
@@ -256,18 +326,38 @@ def integrate_two_node(
         cold_temperature: float,
         hot_temperature: float,
         step_current: float,
+        evaluation_time: float,
+        stage: str,
     ) -> TemperatureRates:
-        return two_node_rhs(
-            thermoelectric_parameters,
-            thermal_parameters,
-            cold_temperature=cold_temperature,
-            hot_temperature=hot_temperature,
-            current=step_current,
-            cold_reservoir_temperature=cold_reservoir_temperature,
-            hot_reservoir_temperature=hot_reservoir_temperature,
-            cold_external_heat=cold_external_heat,
-            hot_external_heat=hot_external_heat,
+        _validate_integration_temperatures(
+            (cold_temperature, hot_temperature),
+            time=evaluation_time,
+            stage=stage,
         )
+        try:
+            rates = two_node_rhs(
+                thermoelectric_parameters,
+                thermal_parameters,
+                cold_temperature=cold_temperature,
+                hot_temperature=hot_temperature,
+                current=step_current,
+                cold_reservoir_temperature=cold_reservoir_temperature,
+                hot_reservoir_temperature=hot_reservoir_temperature,
+                cold_external_heat=cold_external_heat,
+                hot_external_heat=hot_external_heat,
+            )
+        except OverflowError as error:
+            raise IntegrationDivergenceError(
+                f"two-node integration overflowed near t={evaluation_time:.9g} "
+                f"s during {stage}; reduce the time step or revise the model "
+                "inputs"
+            ) from error
+        _validate_integration_rates(
+            rates,
+            time=evaluation_time,
+            stage=stage,
+        )
+        return rates
 
     while times[-1] < duration:
         current_time = times[-1]
@@ -284,35 +374,55 @@ def integrate_two_node(
         hot_temperature = hot_temperatures[-1]
         step_current = current_at(current, current_time)
 
-        k1 = rates_at(cold_temperature, hot_temperature, step_current)
+        midpoint_time = current_time + 0.5 * step
+        k1 = rates_at(
+            cold_temperature,
+            hot_temperature,
+            step_current,
+            current_time,
+            "RK4 k1",
+        )
         k2 = rates_at(
             cold_temperature + 0.5 * step * k1.cold,
             hot_temperature + 0.5 * step * k1.hot,
             step_current,
+            midpoint_time,
+            "RK4 k2",
         )
         k3 = rates_at(
             cold_temperature + 0.5 * step * k2.cold,
             hot_temperature + 0.5 * step * k2.hot,
             step_current,
+            midpoint_time,
+            "RK4 k3",
         )
         k4 = rates_at(
             cold_temperature + step * k3.cold,
             hot_temperature + step * k3.hot,
             step_current,
+            next_time,
+            "RK4 k4",
         )
 
-        cold_temperatures.append(
+        next_cold_temperature = (
             cold_temperature
             + step
             * (k1.cold + 2.0 * k2.cold + 2.0 * k3.cold + k4.cold)
             / 6.0
         )
-        hot_temperatures.append(
+        next_hot_temperature = (
             hot_temperature
             + step
             * (k1.hot + 2.0 * k2.hot + 2.0 * k3.hot + k4.hot)
             / 6.0
         )
+        _validate_integration_temperatures(
+            (next_cold_temperature, next_hot_temperature),
+            time=next_time,
+            stage="RK4 step result",
+        )
+        cold_temperatures.append(next_cold_temperature)
+        hot_temperatures.append(next_hot_temperature)
         times.append(next_time)
 
     return TemperatureTrajectory(

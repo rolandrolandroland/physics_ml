@@ -647,9 +647,11 @@ $$
 s_{test}=2028+3i.
 $$
 
-Consequently, no regime or trial reuses a random seed. The seed mapping makes
-the complete study reproducible while preserving distinct noise draws for all
-three regimes.
+These are split-level base seeds. The first regime in each split retains its
+base seed; any later regime is mapped into a disjoint Cantor-paired namespace.
+Consequently, adding regimes cannot reuse another split or trial's random
+stream. The mapping remains deterministic and preserves the established
+one-regime results.
 
 ### 19.4 One-trial data path
 
@@ -765,7 +767,7 @@ zero-noise case is tested as the ideal-data limiting case.
 The central objects are:
 
 - `ContactResistanceNoiseStudyConfig`, which freezes the study controls;
-- `ContactResistanceNoiseSeeds`, which records the three seeds in one trial;
+- `ContactResistanceNoiseSeeds`, which records the three split seeds in one trial;
 - `run_contact_resistance_noise_trial`, which performs one fit and evaluation;
 - `run_contact_resistance_noise_study`, which repeats and summarizes trials;
   and
@@ -856,16 +858,23 @@ controlled sensitivity input.
 
 ### 21.1 Sensor equation and ordering
 
-The first-order sensor state follows the discrete exact constant-target
-update
+Between dense truth samples, the ideal target is interpolated linearly. The
+first-order sensor state then has the exact piecewise-linear-target update
 
 $$
-T_{s,k}^{lag}=a_kT_{s,k-1}^{lag}+(1-a_k)T_{s,k}^{ideal},
+T_{s,k}^{lag}=a_kT_{s,k-1}^{lag}
+ +(1-a_k)T_{s,k-1}^{ideal}
+ +m_{s,k}\left[\Delta t_k-\tau_s(1-a_k)\right],
 $$
 
 $$
-a_k=\exp\left(-\frac{\Delta t_k}{\tau_s}\right).
+a_k=\exp\left(-\frac{\Delta t_k}{\tau_s}\right),\qquad
+m_{s,k}=\frac{T_{s,k}^{ideal}-T_{s,k-1}^{ideal}}{\Delta t_k}.
 $$
+
+The former right-endpoint constant-target update was exact for that artificial
+hold assumption but led a continuous ramp by approximately half a dense time
+step. Linear interpolation removes that discretization artifact.
 
 `contact_resistance_lag_study.py` simulates ideal observations every 0.1 s,
 evolves this sensor state, and only then downsamples to the 1 s measurement
@@ -877,10 +886,10 @@ sensor model and make the result depend incorrectly on reporting frequency.
 | Lag case | Inferred resistance | Training observation RMSE | Test observation RMSE |
 | --- | ---: | ---: | ---: |
 | Zero lag | 0.249999776 K/W | approximately 0 K | approximately 0 K |
-| Face 2 s | 0.246880379 K/W | 0.121744 K | 0.194466 K |
-| Exchanger 2 s | 0.270766427 K/W | 0.048474 K | 0.077482 K |
-| Both 2 s | 0.270846727 K/W | 0.131330 K | 0.210732 K |
-| Face 2 s, exchanger 0.5 s | 0.252142030 K/W | 0.122447 K | 0.195915 K |
+| Face 2 s | 0.246787415 K/W | 0.124839 K | 0.199408 K |
+| Exchanger 2 s | 0.271277687 K/W | 0.049714 K | 0.079472 K |
+| Both 2 s | 0.271434083 K/W | 0.134664 K | 0.216076 K |
+| Face 2 s, exchanger 0.5 s | 0.252630129 K/W | 0.125666 K | 0.201088 K |
 
 The estimator changes resistance because contact resistance also changes
 transient temperature differences. That is confounding. However, the
@@ -1032,17 +1041,17 @@ draw associated with each original sensor record.
 
 | Parameter metric | Combined result |
 | --- | ---: |
-| Mean inferred resistance | 0.201589285 K/W |
-| Sample standard deviation | 0.005680841 K/W |
-| Mean bias | -0.048410715 K/W |
-| Parameter RMSE | 0.048739579 K/W |
-| Empirical 5th percentile | 0.192003358 K/W |
-| Empirical 95th percentile | 0.210809525 K/W |
+| Mean inferred resistance | 0.201590126 K/W |
+| Sample standard deviation | 0.005722516 K/W |
+| Mean bias | -0.048409874 K/W |
+| Parameter RMSE | 0.048743570 K/W |
+| Empirical 5th percentile | 0.191932514 K/W |
+| Empirical 95th percentile | 0.210875489 K/W |
 | Search-bound hits | 0 |
 
 | Mean RMSE | Train | Validation | Test |
 | --- | ---: | ---: | ---: |
-| Against imperfect observations | 0.145442 K | 0.117285 K | 0.213847 K |
+| Against imperfect observations | 0.148118 K | 0.118964 K | 0.218345 K |
 | Against visible ideal truth | 0.049159 K | 0.039371 K | 0.065644 K |
 
 The mean is nearly 0.05 K/W below the truth. That systematic error is much

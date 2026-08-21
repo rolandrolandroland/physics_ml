@@ -49,6 +49,7 @@ class ContactResistanceCombinedStudyTests(unittest.TestCase):
             {"trial_count": 0},
             {"trial_count": True},
             {"first_seed": 1.5},
+            {"first_seed": -1},
             {"bias_model": "invalid"},
             {"lag_model": "invalid"},
             {"turn_off_half_width": -1.0},
@@ -82,17 +83,17 @@ class ContactResistanceCombinedStudyTests(unittest.TestCase):
         self.assertEqual(tuple(trial.seeds), (2026, 2027, 2028))
         self.assertAlmostEqual(
             trial.inferred_cold_contact_resistance,
-            0.205733876,
+            0.205764353,
             places=8,
         )
         self.assertAlmostEqual(
             trial.training_observation_rmse,
-            0.144871,
+            0.147474,
             places=6,
         )
         self.assertAlmostEqual(
             trial.test_truth_rmse,
-            0.059706,
+            0.059663,
             places=6,
         )
         self.assertFalse(trial.reached_search_bound)
