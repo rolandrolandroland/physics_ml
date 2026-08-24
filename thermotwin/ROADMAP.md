@@ -32,7 +32,7 @@ validation are reported separately.
 ## Scope and modeling principles
 
 ThermoTwin models a generic thermoelectric heat pump using public physics. It
-does not reproduce proprietary MIMiC hardware.
+does not reproduce any proprietary hardware.
 
 The project follows these rules:
 

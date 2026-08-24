@@ -10,7 +10,7 @@ The most important qualification is this:
 
 > This is a reproducible method demonstration using real literature-derived
 > material properties and explicit synthetic product assumptions. It is not a
-> validated MIMiC design, a manufacturing-process model, a dollar cost model,
+> validated commercial design, a manufacturing-process model, a dollar cost model,
 > or evidence that the selected virtual module will match hardware.
 
 ## 1. Questions asked
