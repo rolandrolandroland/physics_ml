@@ -22,9 +22,7 @@ hardware.
 The implementation is in
 [`contact_resistance_inference.py`](contact_resistance_inference.py). The
 repeated-noise implementation is in
-[`contact_resistance_noise_study.py`](contact_resistance_noise_study.py). The
-learning exercises are in
-[`notes/14_contact_resistance_experiment.md`](notes/14_contact_resistance_experiment.md).
+[`contact_resistance_noise_study.py`](contact_resistance_noise_study.py).
 
 ---
 
@@ -1192,9 +1190,6 @@ This is a fixed-parameter forward validation. It establishes the segmented
 temperature and residual representation before the cold contact resistance is
 made trainable on pulse observations in the next section.
 
-The implementation details and exercises are in
-[`notes/17_piecewise_contact_forward_pinn.md`](notes/17_piecewise_contact_forward_pinn.md).
-
 ---
 
 ## 28. Piecewise inverse contact-resistance PINN
@@ -1252,9 +1247,6 @@ shows that resistance has zero loss gradient when no cold contact temperature
 drop develops. The next comparisons will replace ideal records with the
 already frozen missing, restricted-sensor, noisy, biased, lagged, and combined
 datasets one mechanism at a time.
-
-The implementation and learning exercises are in
-[`notes/18_piecewise_inverse_contact_resistance.md`](notes/18_piecewise_inverse_contact_resistance.md).
 
 ---
 

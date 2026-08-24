@@ -113,6 +113,3 @@ python3 -m thermotwin.pulse_operating_map_report
 Implementation: [`pulse_operating_map.py`](pulse_operating_map.py), which
 reuses [`control_comparison.py`](control_comparison.py) and
 [`cop_operating_map.py`](cop_operating_map.py).
-
-Learning exercises:
-[`notes/20_pulse_operating_envelope.md`](notes/20_pulse_operating_envelope.md).

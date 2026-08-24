@@ -81,10 +81,10 @@ correct and the 0.02 K noise scale is known.
 
 | Quantity | Hidden truth | Estimate | Local 95% interval |
 | --- | ---: | ---: | ---: |
-| Cold contact resistance | 0.25000 K/W | 0.25103 K/W | 0.23964--0.26241 K/W |
-| Shared sensor lag | 1.5000 s | 1.5147 s | 1.33492--1.69452 s |
-| Cold-sensor bias | +0.0800 K | +0.0792 K | +0.07208--+0.08630 K |
-| Hot-sensor bias | -0.0400 K | -0.0421 K | -0.04653 to -0.03763 K |
+| Cold contact resistance | 0.25000 K/W | 0.25103 K/W | 0.23967--0.26238 K/W |
+| Shared sensor lag | 1.5000 s | 1.5158 s | 1.33589--1.69563 s |
+| Cold-sensor bias | +0.0800 K | +0.0792 K | +0.07208--+0.08629 K |
+| Hot-sensor bias | -0.0400 K | -0.0421 K | -0.04652 to -0.03762 K |
 
 All four synthetic truths fall inside their reported intervals. The training
 observation RMSE is 0.02151 K, close to the imposed 0.02 K noise scale.
@@ -104,7 +104,7 @@ histories are consequences of the fitted physical model.
 
 The fitted resistance, lag, and biases are transferred without refitting to a
 different schedule containing +0.75 A and -0.45 A intervals. Against noiseless
-synthetic truth, the two accessible sensor histories have 0.00186 K RMSE. The
+synthetic truth, the two accessible sensor histories have 0.00187 K RMSE. The
 hidden cold- and hot-face trajectories have 0.00112 K and 0.00010 K RMSE,
 respectively. These nonzero errors are the honest consequence of estimating
 the parameters from noisy sparse data.

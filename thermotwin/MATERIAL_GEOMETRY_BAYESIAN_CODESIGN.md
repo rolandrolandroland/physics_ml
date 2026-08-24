@@ -432,7 +432,6 @@ process. Matplotlib is needed only for the report figure.
 | `test_material_catalog.py` | signs, provenance, $ZT$, and geometry limiting cases |
 | `test_material_geometry_codesign.py` | space filling, energy-consistent evaluation, current scan, GP, acquisition, budgets, reproducibility, robustness |
 | `test_material_geometry_codesign_report.py` | default figure location and PNG generation |
-| `notes/22_material_geometry_bayesian_codesign.md` | physics-and-code learning exercises |
 
 ## 12. What the campaign establishes
 

@@ -33,4 +33,4 @@ include = ["thermotwin*"]
 exclude = ["thermotwin.figures*"]
 
 [tool.setuptools.package-data]
-thermotwin = ["*.md", "notes/*.md", "requirements-pinn.txt"]
+thermotwin = ["*.md", "requirements-pinn.txt"]

@@ -177,11 +177,8 @@ These are boundaries on the claim, not hidden qualifications.
 ## Reproducibility and deeper study
 
 The showcase composes existing tested workflows rather than maintaining a
-separate set of equations. The detailed derivations, code exercises, and
-limiting cases are in:
+separate set of equations. The detailed derivations and limiting cases are in:
 
-- [`notes/17_piecewise_contact_forward_pinn.md`](notes/17_piecewise_contact_forward_pinn.md)
-- [`notes/18_piecewise_inverse_contact_resistance.md`](notes/18_piecewise_inverse_contact_resistance.md)
 - [`README_detailed.md`](README_detailed.md)
 - [`CONTACT_RESISTANCE_EXPERIMENT.md`](CONTACT_RESISTANCE_EXPERIMENT.md)
 

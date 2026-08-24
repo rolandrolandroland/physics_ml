@@ -550,7 +550,6 @@ requirements in one reproducible design-selection loop.
   100.0% requirement pass rates. The fragile efficiency winner demonstrates
   why nominal COP optimization is not sufficient for commercialization.
 - Walkthrough: `MATERIAL_GEOMETRY_BAYESIAN_CODESIGN.md`.
-- Exercises: `notes/22_material_geometry_bayesian_codesign.md`.
 
 ### Exit criteria
 

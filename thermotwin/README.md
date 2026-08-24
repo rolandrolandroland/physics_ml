@@ -1,840 +1,292 @@
-# ThermoTwin physics kernel
+# ThermoTwin
 
-For a step-by-step explanation of the physics, code paths, conventional solver,
-forward PINN, inverse parameter inference, tests, and current limitations, see
+ThermoTwin is a physics-informed digital twin and experiment-planning toolkit
+for a modular thermoelectric heat pump. It connects material properties,
+geometry, interfaces, drive electronics, sensors, inference, and control to the
+device-level quantities an engineer ultimately cares about: delivered heat,
+temperature lift, electrical power, and coefficient of performance (COP).
+
+The conventional physics kernel is dependency-free Python. Optional reports use
+Matplotlib and optional physics-informed neural networks (PINNs) use PyTorch.
+The package has extensive synthetic validation, but **it has not yet been
+validated against hardware**.
+
+For equations, implementation details, and full reproduction instructions, see
 [`README_detailed.md`](README_detailed.md).
 
-The governing project sequence, revised milestone definitions, current status,
-and completion criteria are in [`ROADMAP.md`](ROADMAP.md).
+---
 
-## Package architecture and installation
+## Why this project exists
 
-The implementation is organized by responsibility under `core`, `physics`,
-`numerics`, `simulation`, `observations`, `inference`, `pinn`, `design`,
-`studies`, and `reports`. Historical flat imports and every documented
-`python3 -m thermotwin...` command remain supported by compatibility facades.
-The dependency rules and extension guide are in
-[`docs/thermotwin/ARCHITECTURE.md`](../docs/thermotwin/ARCHITECTURE.md).
+A promising thermoelectric material does not automatically make a good heat
+pump. Module geometry, thermal and electrical interfaces, heat exchangers,
+current limits, converter losses, sensors, and the intended operating condition
+can erase or amplify the material-level advantage. ThermoTwin keeps those layers
+connected so that a design or experiment can be judged at the system level.
 
-Install only the dependency-free physics and conventional tools with:
+```mermaid
+flowchart LR
+    A["Material properties"] --> B["Module geometry and interfaces"]
+    B --> C["Thermal dynamics"]
+    C --> D["Virtual sensors and datasets"]
+    D --> E["Parameter inference"]
+    E --> F["Next-experiment selection"]
+    C --> G["COP maps and control"]
+    B --> H["Material/geometry co-design"]
+    C --> I["Forward and inverse PINNs"]
+```
 
-~~~bash
+### Important materials boundary
+
+Material properties are **inputs**, not predictions. ThermoTwin does not infer
+what Seebeck coefficient, electrical conductivity, or thermal conductivity a
+dopant, sintering route, or lattice will produce. It prices a supplied property
+set at the module and device levels, where geometry, interfaces, electronics,
+and application constraints determine whether the material advantage survives.
+
+## What ThermoTwin can answer
+
+| Engineering question | Reproducible walkthrough |
+| --- | --- |
+| What COP is available at a given current and temperature lift? | [COP operating map](COP_OPERATING_MAP_EXPERIMENT.md) |
+| How much efficiency do thermal contacts consume at equal delivered cooling? | [COP operating map](COP_OPERATING_MAP_EXPERIMENT.md) |
+| What does direct PWM cost compared with smoothed current or ideal DC? | [PWM power electronics](PWM_POWER_ELECTRONICS_EXPERIMENT.md) |
+| Does seconds-scale pulsing beat continuous current at equal cooling? | [Pulse operating map](PULSE_OPERATING_MAP_EXPERIMENT.md) and [control comparison](CONTROL_COMPARISON_EXPERIMENT.md) |
+| Can hidden contact resistance be inferred from sparse temperature sensors? | [Contact-resistance inference](CONTACT_RESISTANCE_EXPERIMENT.md) and [sparse sensors](SPARSE_SENSOR_EXPERIMENT.md) |
+| Which sensor locations and current pulse are most informative? | [Next-experiment selection](NEXT_EXPERIMENT_WALKTHROUGH.md) |
+| Can finished assemblies be ranked by hidden interface quality? | [Assembly fingerprinting](ASSEMBLY_FINGERPRINT_EXPERIMENT.md) |
+| What does a PINN add beyond a conventional solver? | [PINN showcase](PINN_SHOWCASE.md) |
+| How should material choice and leg geometry change with the application? | [Material/geometry co-design](MATERIAL_GEOMETRY_BAYESIAN_CODESIGN.md) |
+| What would a real hardware comparison require? | [Hardware-validation protocol](HARDWARE_VALIDATION_PROTOCOL.md) |
+
+---
+
+## Quick start
+
+From the repository root, install the package in editable mode:
+
+```bash
 python3 -m pip install -e .
-~~~
+```
 
-Install the report and PINN extras with:
+Install all optional report and PINN dependencies:
 
-~~~bash
+```bash
 python3 -m pip install -e '.[all]'
-~~~
+```
 
-New code can use the layered API directly:
+Run the complete test suite:
 
-~~~python
+```bash
+python3 -m unittest discover -s tests
+```
+
+Start with the two broadest reports:
+
+```bash
+thermotwin-engineering-showcase
+thermotwin-codesign
+```
+
+Installed command | Equivalent module command
+--- | ---
+`thermotwin-engineering-showcase` | `python3 -m thermotwin.engineering_showcase`
+`thermotwin-codesign` | `python3 -m thermotwin.material_geometry_codesign_report`
+`thermotwin-cop-map` | `python3 -m thermotwin.cop_operating_map_report`
+`thermotwin-pwm` | `python3 -m thermotwin.pwm_power_electronics_report`
+`thermotwin-pulse-map` | `python3 -m thermotwin.pulse_operating_map_report`
+`thermotwin-contact-report` | `python3 -m thermotwin.contact_report`
+`thermotwin-pinn-showcase` | `python3 -m thermotwin.pinn_showcase`
+`thermotwin-dataset-quality` | `python3 -m thermotwin.dataset_quality`
+
+Reports write reproducible images to `thermotwin/figures/` by default. That
+directory is ignored by Git. Most report commands accept `--output PATH` when a
+different destination is useful.
+
+Importing the core package does not import PyTorch or Matplotlib.
+
+---
+
+## Results at a glance
+
+These are synthetic, model-based results. The linked walkthroughs own the full
+conditions, assumptions, and interpretation.
+
+### Physics-informed modeling
+
+| Result | Value |
+| --- | ---: |
+| Physics-only four-state forward PINN, worst state RMSE | 0.009327 K |
+| Temperature labels used by that forward PINN | 0 |
+| Inverse PINN estimate of a hidden 0.25 K/W contact resistance | 0.250519 K/W |
+| Inverse PINN parameter error | 0.208% |
+| Withheld-schedule RMSE after transferring the inferred parameter through the trusted solver | 0.000322 K validation; 0.000534 K bipolar test |
+
+The conventional scalar optimizer is more accurate on this small ideal problem:
+it recovers 0.250000002 K/W in 42 loss evaluations. The PINN result matters not
+because it beats that optimizer, but because one differentiable representation
+combines governing equations, partial observations, positive parameters, hidden
+states, and switched controls.
+
+### Sensors, inference, and experiment design
+
+| Result | Value |
+| --- | ---: |
+| Local information from the cold sensor pair versus the hot pair | 304.9 vs 1.94, about 157× |
+| Inferred resistance after an unmodeled +0.10 K cold-face bias | 0.2089 K/W, 16.4% low |
+| Selected feasible pulse | 0.8 A for 20 s, starting at 5 s |
+| Expected information gain of selected versus naive pulse | 7.198 vs 2.889 nats |
+| Joint log-parameter RMSE reduction in 250 linearized noise trials | 82.2% |
+
+The central lesson is that transient placement and sensor location can matter
+more than simply collecting more samples.
+
+### Efficiency, electronics, and co-design
+
+| Result | Value |
+| --- | ---: |
+| Contact-aware versus reduced-model COP penalty at equal 3 W cooling | 19–35% over the feasible 0–25 K lift range |
+| Direct rectangular PWM Joule multiplier at fixed mean current and duty `D` | exactly `1 / D` |
+| Cooling-COP penalty at a 5 W target: 75% duty to 99% duty | 24.23% to 0.90% |
+| 25 K co-design utility: Bayesian optimization versus random-search median | 6.4268 vs 3.9015 |
+| Bayesian-optimization improvement on either 10 K application | none; the initial screen already contained the tested-pool winner |
+| Requirement pass rate of the nominal 10 K efficiency winner under assumed as-built spread | 55.3% |
+
+The final two results are deliberately uncomfortable. Reporting the null
+optimization result avoids inventing value where the initial design already
+won, and the 55.3% pass rate shows that optimizing nominal COP can select a
+design that is difficult to manufacture reliably.
+
+---
+
+## Physics in one page
+
+For cold and hot thermoelectric face temperatures `T_c` and `T_h`, current `I`,
+effective Seebeck coefficient `alpha`, electrical resistance `R`, and parasitic
+thermal conductance `K`:
+
+```text
+Q_c = alpha I T_c - 0.5 I^2 R - K(T_h - T_c)
+Q_h = alpha I T_h + 0.5 I^2 R - K(T_h - T_c)
+V   = alpha(T_h - T_c) + I R
+```
+
+`Q_c > 0` means heat is removed from the cold face; `Q_h > 0` means heat is
+delivered to the hot face. The module energy identity is
+
+```text
+Q_h - Q_c = V I.
+```
+
+Peltier transport grows linearly with current, while Joule heat grows with the
+current squared. More current therefore cannot improve cooling indefinitely.
+At zero current, only passive hot-to-cold conduction remains.
+
+The two-node transient model attaches thermal capacitances and reservoir links
+directly to the two module faces. The contact-aware four-node model separates
+the module faces from the exchanger nodes, making interface temperature drops
+and hidden contact resistance explicit. Use the two-node model when contacts
+are intentionally omitted; no zero-resistance workaround is required.
+
+---
+
+## Model and software layers
+
+```text
+thermotwin/
+├── core/          current-control types shared across the package
+├── physics/       thermoelectric relations, balances, steady states, RK4 solvers
+├── numerics/      interpolation, discontinuous-power integration, matrices, statistics
+├── simulation/    frozen experiments and diagnostic histories
+├── observations/  sensors, noise, bias, lag, dropout, provenance, data quality
+├── inference/     parameter estimation, identifiability, experiment selection
+├── studies/       repeatable robustness campaigns
+├── design/        COP maps, controls, electronics, and material/geometry co-design
+├── pinn/          optional forward and inverse PINNs
+└── reports/       command-line reports and figures
+```
+
+New code should use the layered imports:
+
+```python
 from thermotwin.physics import ThermoelectricParameters, cold_side_heat
 from thermotwin.core.controls import PiecewiseConstantCurrent
 from thermotwin.design.codesign import CodesignCampaignConfig
-~~~
-
-Importing `thermotwin` itself does not load PyTorch or Matplotlib.
-
-## PINN showcase
-
-For the shortest end-to-end demonstration, see
-[`PINN_SHOWCASE.md`](PINN_SHOWCASE.md). One command trains the switched-current
-physics-only and inverse PINNs and creates a focused six-panel evidence figure:
-
-~~~bash
-python3 -m thermotwin.pinn_showcase
-~~~
-
-The showcase highlights zero-label four-state forward prediction, recovery of
-a hidden contact resistance from a 100 percent wrong initial guess,
-reconstruction of two unobserved hot-side states, exact temperature continuity
-at current switches, and parameter transfer to lower-amplitude and bipolar
-controls. It also includes the conventional scalar baseline and states the
-limits of the same-model synthetic comparison explicitly.
-
-## Engineering decision showcase
-
-The new CPU-first engineering workflow turns the validated model into four
-decision-oriented synthetic experiments:
-
-1. infer contact resistance, sensor lag, and two sensor biases using only the
-   cold and hot exchanger temperatures, including missing turn-off readings;
-2. reconstruct inaccessible face temperatures and transfer the inferred
-   quantities to a withheld bipolar schedule;
-3. compare optimized continuous current with a bounded pulse sweep at equal
-   delivered cooling after a periodic warm-up; and
-4. select the next informative pulse under energy and temperature constraints,
-   then use it as a standardized synthetic assembly fingerprint.
-
-Run every experiment and generate the four-panel evidence figure with:
-
-~~~bash
-python3 -m thermotwin.engineering_showcase
-~~~
-
-The default output is
-`thermotwin/figures/engineering_decision_showcase.png`. The main results are:
-
-- exchanger-only inference estimates a 0.25 K/W hidden contact as 0.25103 K/W
-  and a 1.5 s sensor lag as 1.5147 s, with every frozen truth inside its local
-  95% interval;
-- the withheld current schedule has 0.00186 K accessible-sensor RMSE and small
-  but nonzero hidden-face errors;
-- direct rectangular pulsing follows the expected duty law: its fixed-mean
-  Joule multiplier is $1/D$, and its COP penalty approaches zero as duty
-  approaches continuous operation;
-- the constrained planner selects 0.8 A for 20 s and reduces linearized joint
-  log-parameter RMSE by 82.2% versus the smallest feasible pulse; and
-- a five-assembly synthetic batch is correctly separated into low-loss,
-  reference-band, and elevated-loss contact groups.
-
-The negative pulsing result is retained intentionally. The older 21.8--27.6%
-headline came from a grid capped at 75% duty; it is now reported as one slice
-of the duty curve rather than an optimized result. Across duties through 99%,
-this constant-property, fixed-reservoir model does not contain a mechanism that
-overcomes the higher-current Joule penalty. It is not a claim about a different
-physical device.
-
-Each experiment has a complete question-to-result walkthrough:
-
-- [`SPARSE_SENSOR_EXPERIMENT.md`](SPARSE_SENSOR_EXPERIMENT.md)
-- [`CONTROL_COMPARISON_EXPERIMENT.md`](CONTROL_COMPARISON_EXPERIMENT.md)
-- [`NEXT_EXPERIMENT_WALKTHROUGH.md`](NEXT_EXPERIMENT_WALKTHROUGH.md)
-- [`ASSEMBLY_FINGERPRINT_EXPERIMENT.md`](ASSEMBLY_FINGERPRINT_EXPERIMENT.md)
-
-## Efficiency and electrical-drive maps
-
-Three linked experiments now turn the contact-aware model into an explicit
-efficiency operating envelope:
-
-1. a steady cooling/heating COP map over 0--1.5 A, 0--30 K external lift,
-   three contact resistances, and the reduced no-explicit-contact topology;
-2. an overlay of the highest-COP tested seconds-scale pulses on the steady
-   continuous-current COP envelope; and
-3. a thermally averaged power-electronics layer that distinguishes ideal DC,
-   smoothed PWM-derived current, and direct zero-to-peak current PWM.
-
-Run the reports with:
-
-~~~bash
-python3 -m thermotwin.cop_operating_map_report
-python3 -m thermotwin.pulse_operating_map_report
-python3 -m thermotwin.pwm_power_electronics_report
-~~~
-
-The generic baseline shows that equal 0.25 K/W contacts reduce 3 W cooling COP
-by about 19--35% over 0--25 K external lift relative to the reduced topology;
-the target becomes infeasible at 30 K below the 1.5 A current bound. The
-seconds-scale continuous baselines agree with the exact steady map within
-0.04%. The best 75%-duty points are about 22--28% below the continuous COP
-envelope, while the highest-COP tested 99%-duty points are only 0.86--1.04%
-below it because they approach the continuous limit.
-
-For electrical PWM, Peltier heat uses mean current while Joule heat uses
-mean-square current. At 0.6 A mean current, direct 1.5 A chopping has 2.5 times
-the DC Joule heat; the frozen 10% triangular-ripple smoothed case has only
-1.0008 times. Converter input power is reported separately from module
-terminal power so module COP and wall-plug COP are not confused. The averaging
-also states its time-scale assumption explicitly: it neglects
-current-temperature covariance within one electrical switching cycle.
-
-The equations, settings, results, interpretation, and limits are documented in:
-
-- [`COP_OPERATING_MAP_EXPERIMENT.md`](COP_OPERATING_MAP_EXPERIMENT.md)
-- [`PULSE_OPERATING_MAP_EXPERIMENT.md`](PULSE_OPERATING_MAP_EXPERIMENT.md)
-- [`PWM_POWER_ELECTRONICS_EXPERIMENT.md`](PWM_POWER_ELECTRONICS_EXPERIMENT.md)
-
-The corresponding physics-and-code exercise sheets are
-[`notes/19_cop_operating_map.md`](notes/19_cop_operating_map.md),
-[`notes/20_pulse_operating_envelope.md`](notes/20_pulse_operating_envelope.md),
-and
-[`notes/21_pwm_power_electronics.md`](notes/21_pwm_power_electronics.md).
-
-## Public-data-seeded product co-design
-
-ThermoTwin now connects 12 same-row, 300 K Bi/Te-family material records from
-the fixed StarryData snapshot to module geometry, explicit thermal contacts,
-an areal electrical-interface resistance, exchanger sizing, smoothed PWM
-current, wall-plug COP, and a transparent relative prototype-cost index. The
-electrical contact contribution scales as $4N\rho_c/A$, independently of leg
-length, rather than as a constant multiplier on bulk leg resistance. It runs
-three linked CPU-first experiments:
-
-1. a reproducible 24-design Latin-hypercube screen;
-2. cost-aware Gaussian-process Bayesian optimization versus 25 equal-budget
-   random-search baselines for three application specifications; and
-3. 300-trial fixed-current robustness checks for material, contact, exchanger,
-   and converter variation.
-
-Run the complete campaign and nine-panel report with:
-
-~~~bash
-python3 -m thermotwin.material_geometry_codesign_report
-~~~
-
-For the 25 K balanced application, Bayesian optimization reaches the tested
-candidate-pool optimum after five additional virtual prototypes, increasing
-application utility from 3.9015 to 6.4268 while the random-search median stays
-at 3.9015. The selected 25 K balanced and 10 K capacity-first points both use
-100% of the stated 1.0 A/mm2 peak current-density limit; they are constrained
-boundary solutions, not interior optima. The initial 24 designs already
-contain the pool winner for both 10 K objectives. The nominal 10 K efficiency
-winner passes only 55.3% of the frozen as-built trials because its 2.524 W
-cooling rate barely clears the 2.5 W requirement; this deliberately retained
-result shows why nominal efficiency is not enough for a commercial design.
-
-The public-data provenance, module equations, assumptions, experiment designs,
-full results, and limitations are in
-[`MATERIAL_GEOMETRY_BAYESIAN_CODESIGN.md`](MATERIAL_GEOMETRY_BAYESIAN_CODESIGN.md).
-The physics-and-code worksheet is
-[`notes/22_material_geometry_bayesian_codesign.md`](notes/22_material_geometry_bayesian_codesign.md).
-The cost index and uncertainty widths are explicit synthetic assumptions, not
-dollar costs or measured manufacturing capability.
-
-[`HARDWARE_VALIDATION_PROTOCOL.md`](HARDWARE_VALIDATION_PROTOCOL.md) defines
-the measurement CSV and safety decisions needed for a future physical test.
-No hardware result is claimed or synthesized.
-
-This package is isolated from `pinn_heat`. Its first milestone implements the
-constant-property, quasi-steady thermoelectric relations
-
-$$
-Q_c = \alpha I T_c - \tfrac{1}{2}I^2R - K(T_h-T_c),
-$$
-
-$$
-Q_h = \alpha I T_h + \tfrac{1}{2}I^2R - K(T_h-T_c),
-$$
-
-$$
-V = \alpha(T_h-T_c) + IR.
-$$
-
-Positive $Q_c$ is heat removed from the cold node. Positive $Q_h$ is heat
-delivered to the hot node. Temperatures are expressed in kelvin.
-
-The two-node transient right-hand side implements
-
-$$
-C_c\frac{dT_c}{dt}
-=G_c(T_{c,\infty}-T_c)+\dot q_{c,\mathrm{ext}}-Q_c,
-$$
-
-$$
-C_h\frac{dT_h}{dt}
-=G_h(T_{h,\infty}-T_h)+\dot q_{h,\mathrm{ext}}+Q_h.
-$$
-
-The `two_node_rhs` function returns the instantaneous temperature rates.
-`integrate_two_node` advances those rates through time with a fixed-step,
-classical fourth-order Runge--Kutta method. It accepts either a constant current
-or a `PiecewiseConstantCurrent` created with `constant`, `step`, `pulse`, or
-`periodic_pulse`.
-Integration steps end exactly at scheduled current transitions so an abrupt
-switch is not averaged across one RK4 interval. Reservoir temperatures and
-external heat inputs remain constant during a run. The function returns the
-sampled time, cold-temperature, and hot-temperature histories and uses only the
-Python standard library.
-
-Because fixed-step RK4 is explicit, overly large steps can diverge for fast
-contact or capacitance dynamics. The solvers detect invalid RK4 stages and
-raise `IntegrationDivergenceError` with the failing time and step-size
-guidance. Algebraic steady states at or below absolute zero are rejected as
-outside the model's physical domain.
-
-For constant inputs, `two_node_steady_state` independently sets both node
-energy-storage rates to zero and solves the resulting two-by-two algebraic
-system. Comparing a long RK4 trajectory with this solution checks that the
-transient solver approaches the correct equilibrium rather than merely giving
-similar answers at several time steps.
-
-`evaluate_trajectory` post-processes every temperature sample into aligned
-histories of current, temperature difference, $Q_c$, $Q_h$, terminal voltage,
-electrical power, and cooling COP. COP is reported as `None` when electrical
-power is zero and the ratio is undefined.
-
-`constant_current_reference_experiment` freezes the agreed first comparison
-case: 1 A for 60 s, equal 300 K initial and reservoir temperatures, and a 0.1 s
-RK4 step. `run_two_node_experiment` returns both the temperature trajectory and
-its derived diagnostics so learned and conventional results use identical
-inputs.
-
-## Contact-aware four-node model
-
-The separate [contact_transient.py](contact_transient.py) module adds cold and
-hot thermoelectric-face nodes, cold and hot heat-exchanger nodes, and one
-thermal contact resistance on each side. Contact heat is
-
-$$
-\dot q_{\mathrm{contact},c}
-=\frac{T_{x,c}-T_c}{R_{\mathrm{contact},c}},
-\qquad
-\dot q_{\mathrm{contact},h}
-=\frac{T_h-T_{x,h}}{R_{\mathrm{contact},h}}.
-$$
-
-The four balances store energy separately in both faces and both exchangers.
-The thermoelectric heat rates use the face temperatures; fixed reservoirs and
-external loads act on the exchanger nodes. The integrate_four_node_contact
-function supports the same scalar, step, and pulse current inputs as the
-two-node integrator.
-
-The original two-node API remains unchanged and is the reduced model to use
-when contacts are intentionally omitted or lumped. Do not represent that
-choice by passing zero contact resistance to the four-node equations.
-
-The model derivation and code exercises are in
-[notes/10_contact_aware_transient.md](notes/10_contact_aware_transient.md).
-Exercises for the frozen experiment, diagnostics, COP definitions, energy
-checks, comparison, and sweep are in
-[notes/11_contact_reference_diagnostics.md](notes/11_contact_reference_diagnostics.md).
-
-The frozen contact reference uses 1 A for 60 s, equal 0.25 K/W contacts,
-50+50 J/K cold capacitance, and 100+100 J/K hot capacitance. It produces
-aligned histories of both contact drops and heat rates, $Q_c$, $Q_h$, voltage,
-power, module COP, exchanger-delivered COP, and whole-system energy closure.
-
-Generate the two-node comparison and symmetric contact-resistance sweep with:
-
-~~~bash
-python3 -m thermotwin.contact_report
-~~~
-
-By default, generated reports are written under `thermotwin/figures/`. That
-directory is ignored by Git because the figures can be reproduced from the
-committed code. Pass `--output PATH` to override the location deliberately.
-
-## Ideal virtual test stand
-
-The [virtual_test_stand.py](virtual_test_stand.py) module separates dense
-synthetic truth from the observations that a later inverse model is allowed to
-see. The first ideal baseline attaches one named sensor to each of the four
-contact-model nodes and records exact temperatures every 1 s. The hidden RK4
-trajectory still uses a 0.1 s step.
-
-Each long-form observation stores its time, sensor name, modeled location,
-temperature in kelvin, and aligned current in amperes. The sampler supports
-arbitrary sensor subsets, includes the exact final time, linearly interpolates
-when a requested measurement lies between stored truth states, and uses the
-same right-continuous current convention as the integrator.
-
-~~~python
-from thermotwin import run_ideal_contact_reference_test_stand
-
-dataset = run_ideal_contact_reference_test_stand()
-print(len(dataset.measurement_times))  # 61
-print(len(dataset.observations))       # 244
-print(dataset.provenance.experiment.regime_name)
-print(dataset.provenance.experiment.thermal_parameters)
-~~~
-
-This baseline has no noise, bias, lag, or missing readings. Its exercises are
-in [notes/12_virtual_test_stand.md](notes/12_virtual_test_stand.md).
-
-Every high-level generated dataset now includes self-contained provenance
-without exposing its dense RK4 trajectory. The provenance records the complete
-physical experiment, ground-truth thermoelectric and thermal parameters,
-initial and reservoir temperatures, external heat inputs, duration,
-integration step, current schedule, regime name, and train/validation/test
-assignment. It also records the ordered observation pipeline. Applied Gaussian
-noise includes its random seed; bias, lag, sampling, and outage steps include
-their complete settings.
-
-Run the compact whole-regime dataset audit with:
-
-~~~bash
-python3 -m thermotwin.dataset_quality
-~~~
-
-The frozen audit checks record counts, completeness, temperature/current
-ranges, provenance, ground-truth availability, unique regime names, and the
-presence of whole training, validation, and test experiments. It currently
-reports 732 of 732 expected ideal observations and passes every provenance and
-split-integrity check. Missing-observation datasets use the same summary to
-report the exact unavailable count rather than treating absent readings as
-zeros or `NaN` placeholders.
-
-## Reproducible temperature noise
-
-The separate [measurement_noise.py](measurement_noise.py) module applies
-independent zero-mean Gaussian errors to temperature readings without changing
-the immutable ideal dataset. The generic learning baseline uses a 0.05 K
-standard deviation and random seed 2026. It is synthetic and is not a claim
-about any physical sensor's accuracy.
-
-The noise configuration supports a default standard deviation plus named
-per-sensor overrides. Times, currents, sensor names, locations, units, and
-record counts remain unchanged. A zero standard deviation is tested as the
-exact ideal-data limiting case.
-
-~~~python
-from thermotwin import run_noisy_contact_reference_test_stand
-
-result = run_noisy_contact_reference_test_stand()
-print(result.noise_model)
-print(result.dataset.observations[:4])
-~~~
-
-The same seed reproduces the same readings. Different seeds create different
-synthetic trials. Fixed bias is available as a separate transformation below;
-the noise-only workflow does not add it. Lag and missingness are separate
-transformations below. Current-measurement error is not yet included.
-
-## Fixed temperature bias
-
-The [measurement_bias.py](measurement_bias.py) module adds constant
-per-sensor temperature offsets without modifying its input dataset. The
-generic bias-only baseline applies +0.10 K to `cold_face_sensor` and 0 K to the
-other three sensors. This is a controlled learning case, not a calibrated
-instrument offset.
-
-~~~python
-from thermotwin import run_biased_contact_reference_test_stand
-
-result = run_biased_contact_reference_test_stand()
-print(result.bias_model)
-print(result.dataset.observations_for("cold_face_sensor")[:3])
-~~~
-
-Zero bias exactly reproduces the input dataset. A combined helper applies the
-frozen Gaussian noise and bias baselines while retaining both configurations:
-
-~~~python
-from thermotwin import run_noisy_biased_contact_reference_test_stand
-
-result = run_noisy_biased_contact_reference_test_stand()
-print(result.noise_model)
-print(result.bias_model)
-~~~
-
-Unlike zero-mean random noise, a fixed sensor bias does not diminish when many
-readings are averaged.
-
-## First-order sensor lag
-
-The [measurement_lag.py](measurement_lag.py) module represents a sensor that
-relaxes toward the modeled node temperature with a first-order time constant.
-The generic baseline gives `cold_face_sensor` a 2 s time constant and leaves
-the other sensors instantaneous. The first sensor reading is initialized to
-the first node temperature.
-
-~~~text
-a = exp(-time_step / time_constant)
-lagged_temperature = a * previous_lagged_temperature
-                     + (1 - a) * current_node_temperature
-~~~
-
-The dense 0.1 s truth signal is filtered before readings are sampled every
-1 s. This prevents changing the output sampling interval from changing the
-underlying simulated sensor response. The combined workflow then applies
-fixed bias and Gaussian noise after lag.
-
-~~~python
-from thermotwin import run_lagged_contact_reference_test_stand
-
-result = run_lagged_contact_reference_test_stand()
-print(result.lag_model)
-print(result.dataset.observations_for("cold_face_sensor")[:3])
-~~~
-
-For the frozen cooling transient, the lagged cold-face reading remains warmer
-than the instantaneous face temperature. The difference peaks near 0.377 K
-and is about 0.058 K at 60 s. This output filter does not feed heat back into
-the thermal model and is not a calibrated physical sensor model.
-
-## Deterministic missing observations
-
-The [measurement_missingness.py](measurement_missingness.py) module represents
-known sensor outages by omitting unavailable long-form records. The generic
-baseline removes `cold_face_sensor` readings from 20 through 30 s, inclusive.
-It removes 11 of the original 244 records, leaving 50 cold-face readings and
-233 total records. All 61 measurement times remain because the other three
-sensors continue reporting.
-
-~~~python
-from thermotwin import run_missing_contact_reference_test_stand
-
-result = run_missing_contact_reference_test_stand()
-print(len(result.dataset.observations))  # 233
-print(result.missingness_model)
-~~~
-
-Missing readings are absent rows, not 0 K values, `NaN` values, or
-interpolated replacements. The complete synthetic measurement workflow uses:
-
-~~~text
-truth -> lag -> sampling -> bias -> noise -> remove unavailable readings
-~~~
-
-The sensor's lag state continues evolving during the communication outage.
-Missingness changes neither the hidden thermal trajectory nor any retained
-record. An empty outage configuration exactly reproduces the complete input
-dataset. This first deterministic outage is a reproducible learning case, not
-a model of random or temperature-dependent hardware failure.
-
-Consolidated physics, code, validation, and experiment-design exercises for
-sampling, temperature noise, fixed bias, sensor lag, and missing observations
-are in
-[notes/13_measurement_imperfections.md](notes/13_measurement_imperfections.md).
-
-## Cold contact-resistance inference experiment
-
-The dependency-free
-[contact_resistance_inference.py](contact_resistance_inference.py) module
-performs the first conventional inference of one cold thermal contact
-resistance. Every other physical parameter remains fixed. Ideal observations
-from the cold face and cold exchanger enter an equal-weight least-squares
-loss; both hot-side histories are retained as independent consistency checks.
-
-Whole experiments are split by operating regime:
-
-- training: a +1 A pulse from 5 to 20 s;
-- validation: a +0.6 A pulse from 10 to 30 s; and
-- testing: a held-out +1 A/−1 A bipolar schedule.
-
-A bounded golden-section search over 0.05 to 1.0 K/W recovers the hidden
-0.25 K/W resistance as 0.250000002 K/W in 42 loss evaluations. Fitted-pair
-RMSE remains below 2.3e-9 K on all three regimes.
-
-~~~bash
-python3 -m thermotwin.contact_resistance_inference
-~~~
-
-The near-floating-point errors are expected because the same noise-free model
-generates and fits the data. They validate the controlled inference workflow,
-not hardware accuracy or robustness to uncertain parameters and measurement
-imperfections.
-
-The complete standalone walkthrough is
-[CONTACT_RESISTANCE_EXPERIMENT.md](CONTACT_RESISTANCE_EXPERIMENT.md). Physics,
-code, optimization, validation, and interpretation exercises are in
-[notes/14_contact_resistance_experiment.md](notes/14_contact_resistance_experiment.md).
-
-### Repeated Gaussian-noise robustness study
-
-The follow-on
-[contact_resistance_noise_study.py](contact_resistance_noise_study.py) module
-repeats the same fit for 100 independently seeded synthetic trials. Every
-temperature sensor receives independent zero-mean Gaussian noise with a
-0.05 K standard deviation. Only the cold face and cold exchanger enter the
-fit; bias, lag, missingness, current error, and model mismatch remain disabled
-so this stage isolates random temperature noise.
-
-The deterministic allocator keeps trial and split streams distinct and maps
-any additional regimes into a separate paired seed namespace. Adding another
-training regime therefore cannot silently reuse a validation or test stream.
-
-~~~bash
-python3 -m thermotwin.contact_resistance_noise_study
-~~~
-
-Use `--trials 5` for a faster exploratory run. The optional
-`--first-seed` and `--noise-standard-deviation` arguments create another
-reproducible synthetic study without changing the frozen default.
-
-The frozen seeds beginning at 2026 produce:
-
-| Metric | 100-trial result |
-| --- | ---: |
-| Mean inferred resistance | 0.249782542 K/W |
-| Sample standard deviation | 0.004116544 K/W |
-| Mean parameter bias | -0.000217458 K/W |
-| Parameter RMSE | 0.004101678 K/W |
-| Empirical 5th--95th percentiles | 0.243722770--0.256246405 K/W |
-| Search-bound hits | 0 |
-
-The mean fitted-pair error relative to noisy observations remains close to the
-imposed 0.05 K noise scale. Relative to the hidden ideal temperatures, the
-mean errors are 0.003580 K on training, 0.002800 K on validation, and
-0.004655 K on test. These values describe one reproducible same-model Monte
-Carlo study. The percentile range is an empirical distribution across those
-100 trials, not a formal confidence interval or a hardware uncertainty claim.
-
-Run the focused ideal-inference and noise-study tests with:
-
-~~~bash
-python3 -m unittest \
-  tests.test_contact_resistance_inference \
-  tests.test_contact_resistance_noise_study
-~~~
-
-### Bias, lag, missingness, and sensor-availability studies
-
-Five dependency-free follow-on studies isolate the remaining measurement
-effects before combining them:
-
-~~~bash
-python3 -m thermotwin.contact_resistance_bias_study
-python3 -m thermotwin.contact_resistance_lag_study
-python3 -m thermotwin.contact_resistance_missingness_study
-python3 -m thermotwin.contact_resistance_sensor_study
-python3 -m thermotwin.contact_resistance_combined_study
-~~~
-
-The fixed-bias cases show systematic parameter shifts that averaging cannot
-remove. A +0.10 K cold-face bias produces 0.208885 K/W, while the same bias on
-the cold exchanger produces 0.272817 K/W. Equal +0.10 K bias on both cold
-sensors still produces 0.228450 K/W because the loss uses absolute
-temperatures as well as their difference.
-
-Sensor lag is applied to dense 0.1 s truth before 1 s output sampling. A 2 s
-cold-exchanger lag produces 0.270766 K/W, and 2 s lag on both cold sensors
-produces 0.270847 K/W. The resistance shift cannot reproduce the full dynamic
-lag, so held-out residuals remain.
-
-The missingness study removes both cold-sensor readings around each regime's
-nonzero-to-zero current transition. Exact remaining data still recover the
-truth, but the local training sum-of-squares curvature falls from 304.858 with
-complete readings to 216.496 for a plus-or-minus 2 s outage and 133.466 for a
-plus-or-minus 5 s outage. Removing five equilibrium readings per sensor leaves
-the curvature unchanged, confirming that switch-adjacent records are more
-informative than an equal number of steady records.
-
-The restricted-sensor study also recovers the truth in the exact same-model
-limit, but its information metric exposes large practical differences:
-
-| Available sensors | Training information curvature |
-| --- | ---: |
-| Cold face and cold exchanger | 304.858 |
-| Cold face only | 208.858 |
-| Cold exchanger only | 95.999 |
-| Hot pair only | 1.943 |
-| All four sensors | 306.800 |
-
-The hot pair adds less than 1 percent to the cold pair's information about the
-cold contact resistance in this experiment.
-
-The frozen combined pipeline is
-
-~~~text
-dense lag -> sample -> bias -> noise -> turn-off missingness -> restrict sensors
-~~~
-
-It uses 2 s cold-face lag, +0.10 K cold-face bias, 0.05 K independent Gaussian
-noise, plus-or-minus 2 s turn-off outages, and only the cold pair. Across the
-same 100 seeds used by the noise-only study, it produces:
-
-| Metric | Combined result |
-| --- | ---: |
-| Mean inferred resistance | 0.201590126 K/W |
-| Sample standard deviation | 0.005722516 K/W |
-| Mean parameter bias | -0.048409874 K/W |
-| Parameter RMSE | 0.048743570 K/W |
-| Empirical 5th--95th percentiles | 0.191932514--0.210875489 K/W |
-| Search-bound hits | 0 |
-
-The systematic bias is much larger than the random trial spread. Repetition
-therefore characterizes random variation but does not correct an incorrect
-measurement model. All results remain same-model synthetic studies rather
-than hardware uncertainty claims. The full derivations, case definitions, and
-limitations are in
-[CONTACT_RESISTANCE_EXPERIMENT.md](CONTACT_RESISTANCE_EXPERIMENT.md), with
-exercises in
-[notes/14_contact_resistance_experiment.md](notes/14_contact_resistance_experiment.md).
-
-## First forward PINN
-
-The optional `thermotwin.forward_pinn` module contains a small PyTorch network
-that maps time to $(T_c,T_h)$. It trains on the two energy-balance residuals;
-RK4 temperatures are used only afterward for validation. Its output transform
-enforces both initial temperatures exactly rather than treating them as a soft
-penalty.
-
-The initial model intentionally supports only constant current. This keeps the
-first learned problem smooth and provides a controlled baseline before adding
-current switches, inverse parameters, or experimental data. CPU is the default
-device. Set `device="mps"` or `device="auto"` in `ForwardPINNConfig` to use
-Apple MPS when it is available.
-
-Install the optional dependency and run the reference training with:
-
-```bash
-python3 -m pip install -r thermotwin/requirements-pinn.txt
-python3 -m thermotwin.forward_pinn
 ```
 
-Generate a four-panel comparison of the RK4 and PINN trajectories, pointwise
-temperature errors, physics residuals, and training loss with:
+Older public module paths remain as compatibility facades. The dependency rules
+and extension pattern are documented in
+[`docs/thermotwin/ARCHITECTURE.md`](../docs/thermotwin/ARCHITECTURE.md).
 
-```bash
-python3 -m thermotwin.forward_pinn_report
-```
+---
 
-The core solver remains independent of PyTorch and `pinn_heat`.
+## How the evidence is checked
 
-## Contact-aware forward PINN
+The current suite contains 374 tests. It covers:
 
-The optional `thermotwin.contact_forward_pinn` module extends the learned
-forward model to the explicit-contact topology. One network maps time to four
-temperatures in the fixed order
+- units, signs, algebraic identities, and positive/zero/negative current;
+- limiting cases such as passive conduction and absent identifiability;
+- RK4 step refinement, exact handling of known current switches, long-time
+  agreement with independent steady-state equations, and graceful divergence
+  detection;
+- decreasing four-node/two-node disagreement as contact resistance is reduced;
+- observation timing, noise seeds, bias, first-order lag, missing records,
+  provenance, and split isolation;
+- parameter recovery, local information, uncertainty coverage, and withheld
+  operating regimes;
+- PINN residual signs, exact initial conditions, exact segment continuity, and
+  comparison with withheld conventional trajectories;
+- report generation and stable command-line entry points.
 
-~~~text
-(cold TE face, hot TE face, cold exchanger, hot exchanger).
-~~~
+This hierarchy matters. Agreement between a PINN and the conventional solver
+shows that the network approximates the stated equations. Same-model inverse
+recovery shows that the inference machinery works when its assumptions are
+true. Neither result shows that those equations match a physical device.
 
-Its output transform enforces all four initial temperatures exactly. Training
-uses the four face and exchanger energy-balance residuals; the RK4 contact
-trajectory is withheld until validation. The initial contact PINN keeps every
-physical parameter known, including both contact resistances, and accepts
-constant current only. It therefore validates the four-state learned
-architecture but does not yet perform contact-resistance inference.
+---
 
-Run the default 3,000-epoch CPU comparison with:
+## Known limitations
 
-~~~bash
-python3 -m thermotwin.contact_forward_pinn_report
-~~~
+- No hardware dataset has been used.
+- Material properties are constant with temperature and current.
+- The thermoelectric module is quasi-steady and lumped; Thomson heating,
+  radiation, and distributed temperature fields are omitted.
+- Material properties are inputs. There is no process-to-property model for
+  doping, sintering, or lattice design.
+- Most inverse results use data generated by the same model used for fitting.
+- Current is scalar or piecewise constant. The PWM layer is thermally averaged,
+  not a switching-converter circuit simulation.
+- The co-design cost index and manufacturing spreads are declared synthetic
+  assumptions, not supplier quotes or measured process capability.
 
-The six-panel report compares the four temperature histories, their pointwise
-errors, all four physics residuals, both contact temperature drops, and the
-training loss. It is written by default to
-`thermotwin/figures/contact_forward_pinn_comparison.png`.
+See [the detailed assumptions](README_detailed.md#11-assumptions-and-limits)
+before using any result as a design claim.
 
-With the frozen seed and reference experiment, the current default run gives a
-final physics loss of about $1.13\times10^{-4}$ K$^2$/s$^2$. The cold-face,
-hot-face, cold-exchanger, and hot-exchanger RMSE values are approximately
-0.02498 K, 0.00348 K, 0.01509 K, and 0.00494 K, respectively. Small variation
-across PyTorch versions or hardware is possible.
+---
 
-Physics and code exercises for this stage are in
-[`notes/15_contact_forward_pinn.md`](notes/15_contact_forward_pinn.md).
+## Where the project stands
 
-## Piecewise switched-current contact PINN
+The scientific specification, conventional solvers, virtual test stand, and
+current generic control comparison are complete for their documented scopes.
+Forward PINNs, inverse inference, identifiability, next-experiment selection,
+and the research artifact have strong implemented foundations but still have
+explicit exit criteria remaining. Hardware validation is optional and has not
+started.
 
-The optional `thermotwin.piecewise_contact_forward_pinn` module extends the
-four-state forward PINN to piecewise-constant current without forcing one
-smooth network to represent discontinuous temperature derivatives. For the
-established training pulse it uses three smooth subnetworks:
+The authoritative status and remaining work are in [`ROADMAP.md`](ROADMAP.md).
 
-~~~text
-0--5 s: 0 A  |  5--20 s: 1 A  |  20--60 s: 0 A
-~~~
+## Reading and learning paths
 
-Each subnetwork begins exactly at the previous subnetwork's final four
-temperatures. Temperatures are therefore continuous at both switches by
-construction, while left- and right-side derivatives may differ. Current is
-evaluated with the same right-continuous convention as RK4. Duration-weighted
-midpoint collocation points exclude the switches, where a single classical
-derivative is not defined.
+- [`README_detailed.md`](README_detailed.md) — complete technical guide,
+  reproducibility map, API examples, milestones, and glossary.
+- [`PINN_SHOWCASE.md`](PINN_SHOWCASE.md) — the most direct demonstration of the
+  learned model.
+- [`MATERIAL_GEOMETRY_BAYESIAN_CODESIGN.md`](MATERIAL_GEOMETRY_BAYESIAN_CODESIGN.md)
+  — the application and commercialization-facing design study.
+- [`HARDWARE_VALIDATION_PROTOCOL.md`](HARDWARE_VALIDATION_PROTOCOL.md) — the
+  boundary between synthetic evidence and a physical claim.
 
-Run the 5,000-epoch CPU comparison with:
+## Scope statement
 
-~~~bash
-python3 -m thermotwin.piecewise_contact_forward_pinn_report
-~~~
-
-The frozen result has exactly zero constructed boundary-temperature jump. Its
-cold-face, hot-face, cold-exchanger, and hot-exchanger RMSE values against the
-transition-splitting RK4 reference are approximately 0.008862 K, 0.001989 K,
-0.009327 K, and 0.004628 K. RK4 temperatures remain withheld from training.
-
-This stage validates switched-current forward dynamics with fixed contact
-resistance. Its inverse extension below adds one trainable cold contact while
-preserving the same piecewise architecture. Exercises are in
-[`notes/17_piecewise_contact_forward_pinn.md`](notes/17_piecewise_contact_forward_pinn.md).
-
-## Inverse cold-contact-resistance PINN
-
-The optional `thermotwin.inverse_contact_resistance` module reuses the
-four-temperature contact PINN and makes only the cold thermal contact
-resistance trainable. A softplus transform keeps the inferred resistance
-positive. All other physical parameters remain fixed at their synthetic truth.
-
-The first controlled inverse baseline uses constant 1 A current and 13 ideal
-cold-face/cold-exchanger observation times spaced 5 s apart. The loss combines
-four normalized physics residuals with the two observed temperature histories.
-Dense RK4 temperatures and both hot-side histories remain withheld from
-training.
-
-Run the 8,000-epoch CPU comparison and six-panel report with:
-
-~~~bash
-python3 -m thermotwin.inverse_contact_resistance_report
-~~~
-
-Starting from 0.50 K/W, the frozen run infers 0.250141 K/W for a hidden truth
-of 0.250000 K/W, or about 0.056 percent relative error. The conventional
-golden-section fit on the same sparse constant-current observations gives
-0.250000 K/W. Substituting the PINN estimate into the conventional solver gives
-all-sensor RMSE values of approximately 0.000087 K and 0.000145 K on the
-previously defined validation and bipolar test pulse regimes.
-
-The pulse-regime transfer check validates the inferred physical parameter, not
-the learned temperature network: the first inverse PINN itself still trains on
-one smooth constant-current experiment. It has not yet been exposed to noise,
-bias, lag, missing observations, or uncertain physical coefficients.
-
-The new physics and code exercises are in
-[`notes/16_inverse_contact_resistance_pinn.md`](notes/16_inverse_contact_resistance_pinn.md).
-
-## Piecewise inverse cold-contact-resistance PINN
-
-The optional `thermotwin.piecewise_inverse_contact_resistance` module combines
-the switched-current temperature architecture with one positive trainable cold
-contact resistance shared by all three time segments. Its frozen ideal problem
-uses the established 0--1--0 A training pulse and 61 paired cold-face and
-cold-exchanger observation times at 1 s spacing. Dense temperatures and both
-hot-side histories remain withheld from training.
-
-The normalized loss combines all four energy-balance residuals with the cold
-observation mismatch. The observation term has weight 20 to condition the
-joint neural/parameter optimization; this is a numerical choice, not
-additional data or a claim about sensor uncertainty. Exact segment chaining
-still forces all four temperature jumps to zero.
-
-Run the default 8,000-epoch CPU comparison and eight-panel report with:
-
-~~~bash
-python3 -m thermotwin.piecewise_inverse_contact_resistance_report
-~~~
-
-Starting from 0.50 K/W, the frozen run infers 0.250519 K/W for a hidden truth
-of 0.250000 K/W, or about 0.208 percent relative error. The conventional fit on
-the identical pulse observations gives 0.250000 K/W. Dense neural temperature
-RMSE values are approximately 0.00670, 0.00287, 0.00180, and 0.00262 K for the
-cold face, hot face, cold exchanger, and hot exchanger. Transferring the PINN
-parameter through the conventional solver gives all-sensor RMSE values of
-approximately 0.000322 K and 0.000534 K on the unseen validation and bipolar
-test pulses.
-
-This remains an ideal same-model baseline. It does not yet train on noise,
-bias, lag, missing observations, restricted sensors, uncertain coefficients,
-or hardware data. Exercises are in
-[`notes/18_piecewise_inverse_contact_resistance.md`](notes/18_piecewise_inverse_contact_resistance.md).
-
-## First inverse parameter problem
-
-The optional `thermotwin.inverse_thermal_conductance` module treats the module
-thermal conductance $K$ as one positive trainable parameter. The baseline uses
-noise-free synthetic $T_c$ and $T_h$ observations every 5 s from the 60 s
-reference experiment. All other physical parameters and inputs remain fixed
-at their known values.
-
-The temperature network and $K$ are trained jointly. The loss combines the two
-ODE residuals at dense collocation points with errors at the 13 sparse
-temperature snapshots. A softplus transform keeps the inferred conductance
-positive. Dense RK4 temperatures remain separate validation data.
-
-Run the baseline with:
-
-```bash
-python3 -m thermotwin.inverse_thermal_conductance
-```
-
-This noise-free, single-parameter recovery is a controlled identifiability
-baseline. It does not yet establish robustness to measurement noise, sparse
-sensors, simultaneous unknown parameters, model mismatch, or hardware data.
-
-Exercises for deriving, tracing, testing, and interpreting this inverse problem
-are in
-[`notes/09_inverse_thermal_conductance.md`](notes/09_inverse_thermal_conductance.md).
-
-## Learning notes
-
-The user-authored derivations, explanations, predictions, and corrections are
-organized in [`notes/00_index.md`](notes/00_index.md). These notes are kept
-separate from this concise package reference so they can document the reasoning
-and learning process in detail.
+ThermoTwin models a generic thermoelectric heat pump using public equations and
+published material data. It does not reproduce proprietary hardware.

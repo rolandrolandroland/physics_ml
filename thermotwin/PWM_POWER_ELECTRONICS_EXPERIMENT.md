@@ -214,9 +214,6 @@ Implementation:
 [`pwm_power_electronics.py`](pwm_power_electronics.py) and
 [`pwm_power_electronics_report.py`](pwm_power_electronics_report.py).
 
-Learning exercises:
-[`notes/21_pwm_power_electronics.md`](notes/21_pwm_power_electronics.md).
-
 ## Main limitations and next electrical steps
 
 - Converter efficiency and fixed loss are assumed constants.

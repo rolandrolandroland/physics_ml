@@ -199,8 +199,6 @@ python3 -m thermotwin.cop_operating_map_report
 Implementation: [`cop_operating_map.py`](cop_operating_map.py) and
 [`cop_operating_map_report.py`](cop_operating_map_report.py).
 
-Learning exercises: [`notes/19_cop_operating_map.md`](notes/19_cop_operating_map.md).
-
 ## Main limitations
 
 - The parameters are generic constants rather than hardware calibration.
