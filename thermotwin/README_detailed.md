@@ -1,6 +1,6 @@
 # ThermoTwin: detailed reference
 
-This is the technical companion to [`README.md`](README.md). It documents the
+This is the technical companion to the root [`README.md`](../README.md). It documents the
 equations, the numerics, the observation layer, the inference machinery, the
 design workflows, and the assumptions each one depends on.
 

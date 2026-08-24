@@ -3,6 +3,6 @@ __pycache__/
 build/
 *.egg-info/
 .DS_Store
-thermotwin/.idea/
+.idea/
 thermotwin/figures/
 thermotwin/notes/

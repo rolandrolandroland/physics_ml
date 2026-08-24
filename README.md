@@ -12,7 +12,7 @@ The package has extensive synthetic validation, but **it has not yet been
 validated against hardware**.
 
 For equations, implementation details, and full reproduction instructions, see
-[`README_detailed.md`](README_detailed.md).
+[`thermotwin/README_detailed.md`](thermotwin/README_detailed.md).
 
 ---
 
@@ -48,16 +48,16 @@ and application constraints determine whether the material advantage survives.
 
 | Engineering question | Reproducible walkthrough |
 | --- | --- |
-| What COP is available at a given current and temperature lift? | [COP operating map](COP_OPERATING_MAP_EXPERIMENT.md) |
-| How much efficiency do thermal contacts consume at equal delivered cooling? | [COP operating map](COP_OPERATING_MAP_EXPERIMENT.md) |
-| What does direct PWM cost compared with smoothed current or ideal DC? | [PWM power electronics](PWM_POWER_ELECTRONICS_EXPERIMENT.md) |
-| Does seconds-scale pulsing beat continuous current at equal cooling? | [Pulse operating map](PULSE_OPERATING_MAP_EXPERIMENT.md) and [control comparison](CONTROL_COMPARISON_EXPERIMENT.md) |
-| Can hidden contact resistance be inferred from sparse temperature sensors? | [Contact-resistance inference](CONTACT_RESISTANCE_EXPERIMENT.md) and [sparse sensors](SPARSE_SENSOR_EXPERIMENT.md) |
-| Which sensor locations and current pulse are most informative? | [Next-experiment selection](NEXT_EXPERIMENT_WALKTHROUGH.md) |
-| Can finished assemblies be ranked by hidden interface quality? | [Assembly fingerprinting](ASSEMBLY_FINGERPRINT_EXPERIMENT.md) |
-| What does a PINN add beyond a conventional solver? | [PINN showcase](PINN_SHOWCASE.md) |
-| How should material choice and leg geometry change with the application? | [Material/geometry co-design](MATERIAL_GEOMETRY_BAYESIAN_CODESIGN.md) |
-| What would a real hardware comparison require? | [Hardware-validation protocol](HARDWARE_VALIDATION_PROTOCOL.md) |
+| What COP is available at a given current and temperature lift? | [COP operating map](thermotwin/COP_OPERATING_MAP_EXPERIMENT.md) |
+| How much efficiency do thermal contacts consume at equal delivered cooling? | [COP operating map](thermotwin/COP_OPERATING_MAP_EXPERIMENT.md) |
+| What does direct PWM cost compared with smoothed current or ideal DC? | [PWM power electronics](thermotwin/PWM_POWER_ELECTRONICS_EXPERIMENT.md) |
+| Does seconds-scale pulsing beat continuous current at equal cooling? | [Pulse operating map](thermotwin/PULSE_OPERATING_MAP_EXPERIMENT.md) and [control comparison](thermotwin/CONTROL_COMPARISON_EXPERIMENT.md) |
+| Can hidden contact resistance be inferred from sparse temperature sensors? | [Contact-resistance inference](thermotwin/CONTACT_RESISTANCE_EXPERIMENT.md) and [sparse sensors](thermotwin/SPARSE_SENSOR_EXPERIMENT.md) |
+| Which sensor locations and current pulse are most informative? | [Next-experiment selection](thermotwin/NEXT_EXPERIMENT_WALKTHROUGH.md) |
+| Can finished assemblies be ranked by hidden interface quality? | [Assembly fingerprinting](thermotwin/ASSEMBLY_FINGERPRINT_EXPERIMENT.md) |
+| What does a PINN add beyond a conventional solver? | [PINN showcase](thermotwin/PINN_SHOWCASE.md) |
+| How should material choice and leg geometry change with the application? | [Material/geometry co-design](thermotwin/MATERIAL_GEOMETRY_BAYESIAN_CODESIGN.md) |
+| What would a real hardware comparison require? | [Hardware-validation protocol](thermotwin/HARDWARE_VALIDATION_PROTOCOL.md) |
 
 ---
 
@@ -216,7 +216,7 @@ from thermotwin.design.codesign import CodesignCampaignConfig
 
 Older public module paths remain as compatibility facades. The dependency rules
 and extension pattern are documented in
-[`docs/thermotwin/ARCHITECTURE.md`](../docs/thermotwin/ARCHITECTURE.md).
+[`docs/thermotwin/ARCHITECTURE.md`](docs/thermotwin/ARCHITECTURE.md).
 
 ---
 
@@ -259,7 +259,7 @@ true. Neither result shows that those equations match a physical device.
 - The co-design cost index and manufacturing spreads are declared synthetic
   assumptions, not supplier quotes or measured process capability.
 
-See [the detailed assumptions](README_detailed.md#11-assumptions-and-limits)
+See [the detailed assumptions](thermotwin/README_detailed.md#11-assumptions-and-limits)
 before using any result as a design claim.
 
 ---
@@ -273,17 +273,18 @@ and the research artifact have strong implemented foundations but still have
 explicit exit criteria remaining. Hardware validation is optional and has not
 started.
 
-The authoritative status and remaining work are in [`ROADMAP.md`](ROADMAP.md).
+The authoritative status and remaining work are in
+[`thermotwin/ROADMAP.md`](thermotwin/ROADMAP.md).
 
 ## Reading and learning paths
 
-- [`README_detailed.md`](README_detailed.md) — complete technical guide,
+- [`thermotwin/README_detailed.md`](thermotwin/README_detailed.md) — complete technical guide,
   reproducibility map, API examples, milestones, and glossary.
-- [`PINN_SHOWCASE.md`](PINN_SHOWCASE.md) — the most direct demonstration of the
+- [`thermotwin/PINN_SHOWCASE.md`](thermotwin/PINN_SHOWCASE.md) — the most direct demonstration of the
   learned model.
-- [`MATERIAL_GEOMETRY_BAYESIAN_CODESIGN.md`](MATERIAL_GEOMETRY_BAYESIAN_CODESIGN.md)
+- [`thermotwin/MATERIAL_GEOMETRY_BAYESIAN_CODESIGN.md`](thermotwin/MATERIAL_GEOMETRY_BAYESIAN_CODESIGN.md)
   — the application and commercialization-facing design study.
-- [`HARDWARE_VALIDATION_PROTOCOL.md`](HARDWARE_VALIDATION_PROTOCOL.md) — the
+- [`thermotwin/HARDWARE_VALIDATION_PROTOCOL.md`](thermotwin/HARDWARE_VALIDATION_PROTOCOL.md) — the
   boundary between synthetic evidence and a physical claim.
 
 ## Scope statement

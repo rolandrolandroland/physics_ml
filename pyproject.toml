@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "thermotwin"
 version = "0.1.0"
 description = "Physics-informed digital twin and experiment planner for thermoelectric heat pumps"
-readme = "thermotwin/README.md"
+readme = "README.md"
 requires-python = ">=3.10"
 authors = [{name = "ThermoTwin contributors"}]
 dependencies = []
