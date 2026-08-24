@@ -605,7 +605,7 @@ more clearly and reproducibly than a hurried interface.
 
 - Dependency-layered package with installable metadata, compatibility-preserved
   historical imports, extensive tests, two levels of README documentation,
-  experiment walkthroughs, learning worksheets, report commands, and a focused
+  experiment walkthroughs, report commands, and a focused
   PINN showcase.
 - Separate physics, numerics, simulation, observation, inference, PINN,
   design, study, and report namespaces; importing the core does not load

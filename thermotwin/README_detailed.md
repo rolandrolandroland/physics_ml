@@ -22,8 +22,7 @@ you where its code lives — and where new work should go.
 Each technical chapter follows the same logic: physical question, equations and
 signs, assumptions, code ownership, checks, demonstrated result, and remaining
 limits. The walkthrough documents freeze experiment-specific settings and
-outputs; the exercise sheets ask the reader to predict those outputs before
-running the code.
+outputs and the checks that support them.
 
 **Navigation**
 

@@ -89,7 +89,7 @@ remain under `thermotwin/figures/`, are ignored by Git, and are never imported.
 6. Put plotting and presentation in `reports`.
 7. Add tests at the same responsibility level and at least one compatibility
    test when replacing an established public path.
-8. Update both READMEs and the relevant walkthrough or worksheet.
+8. Update both READMEs and the relevant public walkthrough.
 
 ## Migration policy
 
